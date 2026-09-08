@@ -1,0 +1,416 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--bg-100);
+  color: var(--text-900);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+}
+
+button {
+  cursor: pointer;
+  transition: transform 100ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 100ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+/* Cyan buttons 3D effect */
+button.bg-cyan-600:not(aside button),
+button.bg-cyan-500:not(aside button),
+button[class*="bg-cyan-"]:not(aside button) {
+  box-shadow: 0 3px 0 #0891b2, 0 4px 6px -1px rgba(6, 182, 212, 0.1);
+}
+button.bg-cyan-600:not(aside button):hover,
+button.bg-cyan-500:not(aside button):hover,
+button[class*="bg-cyan-"]:not(aside button):hover {
+  box-shadow: 0 4px 0 #0e7490, 0 6px 8px -1px rgba(6, 182, 212, 0.1);
+  transform: translateY(-1px);
+}
+button.bg-cyan-600:not(aside button):active,
+button.bg-cyan-500:not(aside button):active,
+button[class*="bg-cyan-"]:not(aside button):active {
+  transform: translateY(2px) scale(1) !important;
+  box-shadow: 0 1px 0 #0e7490;
+}
+
+/* Blue buttons 3D effect */
+button.bg-blue-600:not(aside button),
+button.bg-blue-500:not(aside button),
+button[class*="bg-blue-"]:not(aside button) {
+  box-shadow: 0 3px 0 #2563eb, 0 4px 6px -1px rgba(37, 99, 235, 0.1);
+}
+button.bg-blue-600:not(aside button):hover,
+button.bg-blue-500:not(aside button):hover,
+button[class*="bg-blue-"]:not(aside button):hover {
+  box-shadow: 0 4px 0 #1d4ed8, 0 6px 8px -1px rgba(37, 99, 235, 0.1);
+  transform: translateY(-1px);
+}
+button.bg-blue-600:not(aside button):active,
+button.bg-blue-500:not(aside button):active,
+button[class*="bg-blue-"]:not(aside button):active {
+  transform: translateY(2px) scale(1) !important;
+  box-shadow: 0 1px 0 #1d4ed8;
+}
+
+/* Red buttons 3D effect */
+button.bg-red-600:not(aside button),
+button.bg-red-500:not(aside button),
+button[class*="bg-red-"]:not(aside button) {
+  box-shadow: 0 3px 0 #dc2626, 0 4px 6px -1px rgba(220, 38, 38, 0.1);
+}
+button.bg-red-600:not(aside button):hover,
+button.bg-red-500:not(aside button):hover,
+button[class*="bg-red-"]:not(aside button):hover {
+  box-shadow: 0 4px 0 #b91c1c, 0 6px 8px -1px rgba(220, 38, 38, 0.1);
+  transform: translateY(-1px);
+}
+button.bg-red-600:not(aside button):active,
+button.bg-red-500:not(aside button):active,
+button[class*="bg-red-"]:not(aside button):active {
+  transform: translateY(2px) scale(1) !important;
+  box-shadow: 0 1px 0 #b91c1c;
+}
+
+/* Green buttons 3D effect */
+button.bg-green-600:not(aside button),
+button.bg-green-500:not(aside button),
+button[class*="bg-green-"]:not(aside button),
+button.bg-emerald-600:not(aside button),
+button[class*="bg-emerald-"]:not(aside button) {
+  box-shadow: 0 3px 0 #16a34a, 0 4px 6px -1px rgba(22, 163, 74, 0.1);
+}
+button.bg-green-600:not(aside button):hover,
+button.bg-green-500:not(aside button):hover,
+button[class*="bg-green-"]:not(aside button):hover,
+button.bg-emerald-600:not(aside button):hover,
+button[class*="bg-emerald-"]:not(aside button):hover {
+  box-shadow: 0 4px 0 #15803d, 0 6px 8px -1px rgba(22, 163, 74, 0.1);
+  transform: translateY(-1px);
+}
+button.bg-green-600:not(aside button):active,
+button.bg-green-500:not(aside button):active,
+button[class*="bg-green-"]:not(aside button):active,
+button.bg-emerald-600:not(aside button):active,
+button[class*="bg-emerald-"]:not(aside button):active {
+  transform: translateY(2px) scale(1) !important;
+  box-shadow: 0 1px 0 #15803d;
+}
+
+/* Gray/Border/Cancel/Secondary buttons 3D effect */
+button.border:not(aside button),
+button.bg-slate-100:not(aside button),
+button.bg-slate-200:not(aside button),
+button.bg-gray-100:not(aside button),
+button.bg-gray-200:not(aside button),
+button[class*="border-"]:not(aside button) {
+  box-shadow: 0 3px 0 #cbd5e1, 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+button.border:not(aside button):hover,
+button.bg-slate-100:not(aside button):hover,
+button.bg-slate-200:not(aside button):hover,
+button.bg-gray-100:not(aside button):hover,
+button.bg-gray-200:not(aside button):hover,
+button[class*="border-"]:not(aside button):hover {
+  box-shadow: 0 4px 0 #94a3b8, 0 6px 8px -1px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+button.border:not(aside button):active,
+button.bg-slate-100:not(aside button):active,
+button.bg-slate-200:not(aside button):active,
+button.bg-gray-100:not(aside button):active,
+button.bg-gray-200:not(aside button):active,
+button[class*="border-"]:not(aside button):active {
+  transform: translateY(2px) scale(1) !important;
+  box-shadow: 0 1px 0 #94a3b8;
+}
+
+/* Custom dark buttons like bg-[#020d38] or bg-slate-900 */
+button.bg-slate-900:not(aside button),
+button[class*="bg-slate-900"]:not(aside button),
+button[class*="bg-[#020d38]"]:not(aside button) {
+  box-shadow: 0 3px 0 #0f172a, 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+}
+button.bg-slate-900:not(aside button):hover,
+button[class*="bg-slate-900"]:not(aside button):hover,
+button[class*="bg-[#020d38]"]:not(aside button):hover {
+  box-shadow: 0 4px 0 #020617, 0 6px 8px -1px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+button.bg-slate-900:not(aside button):active,
+button[class*="bg-slate-900"]:not(aside button):active,
+button[class*="bg-[#020d38]"]:not(aside button):active {
+  transform: translateY(2px) scale(1) !important;
+  box-shadow: 0 1px 0 #020617;
+}
+
+input,
+select,
+textarea {
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(8, 145, 178, 0.32);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: #bae6fd;
+  color: #0f172a;
+}
+
+:root {
+  --bg-100: #f5f7fb;
+  --bg-0: #ffffff;
+  --card-bg: #ffffff;
+  --muted: #6b7280;
+  --text-900: #0f172a;
+  --primary-600: #0ea5a4; /* cyan-ish */
+  --primary-500: #06b6d4;
+  --accent-100: #fef3c7;
+  --success-50: #ecfdf5;
+  --success-700: #15803d;
+  --danger-50: #fff1f2;
+  --danger-700: #991b1b;
+  --info-50: #eff6ff;
+  --info-700: #1d4ed8;
+  --soft-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+}
+
+/* Reusable card */
+.card {
+  background: var(--card-bg);
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  padding: 1.25rem;
+  box-shadow: var(--soft-shadow);
+}
+
+.card-title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: var(--text-900);
+}
+
+.card-subtitle {
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  padding: 0.5rem 0.9rem;
+  font-weight: 600;
+}
+
+.btn-primary {
+  background: var(--primary-600);
+  color: white;
+  box-shadow: 0 6px 18px rgba(6, 182, 212, 0.12);
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  color: var(--text-900);
+}
+
+/* Inputs */
+.form-input {
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: white;
+  outline: none;
+}
+
+.form-input:focus {
+  box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.12);
+  border-color: var(--primary-500);
+}
+
+/* Table styling */
+.crm-table thead th {
+  background: #f1f5f9;
+  padding: 0.9rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.crm-table tbody td {
+  padding: 0.9rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.04);
+}
+
+/* Small utilities */
+.muted { color: var(--muted); }
+.shadow-soft { box-shadow: var(--soft-shadow); }
+.rounded-lg { border-radius: 12px; }
+
+/* Sidebar scrollbar: understated against the dark navigation surface. */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #52657e transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 8px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: #52657e;
+  border: 3px solid #071526;
+  border-radius: 999px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: #71839a;
+}
+
+/* Route content and existing modal containers animate without changing their markup. */
+main > * {
+  animation: crm-page-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fixed.inset-0.z-50 {
+  animation: crm-overlay-enter 180ms ease-out both;
+}
+
+.fixed.inset-0.z-50 > div:first-child {
+  animation: crm-dialog-enter 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.fixed.inset-0.z-50.crm-dialog-closing {
+  animation: crm-overlay-exit 200ms ease-in both;
+}
+
+.fixed.inset-0.z-50 > div.crm-dialog-panel-closing {
+  animation: crm-dialog-exit 200ms ease-in both;
+}
+
+@keyframes crm-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes crm-overlay-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes crm-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes crm-overlay-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes crm-dialog-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0;
+    background: #fff;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* Server Waking Up Loader Animations */
+@keyframes shimmer-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer-progress {
+  animation: shimmer-progress 1.5s infinite linear;
+}
+
+@keyframes wake-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-wake-fade-in {
+  animation: wake-fade-in 400ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+

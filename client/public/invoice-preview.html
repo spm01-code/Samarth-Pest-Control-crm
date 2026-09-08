@@ -1,0 +1,11 @@
+<!doctype html>
+<html><head><meta charset="UTF-8" /><title>Invoice visual QA</title></head><body><script type="module">
+  import { generateInvoiceHtml } from "/src/utils/invoiceTemplate.js";
+  const base = {
+    invoiceNumber: "SPMJ/148/2026-27", invoiceDate: "2026-07-31", subtotal: 698.86, totalAmount: 824.64,
+    particulars: "Being Charges for pest management service rendered as details mentioned below.",
+    premisesTreated: "JOYVILLE SHAPOORJI HOUSING PVT LTD,\n(SUMMIT APEX - 08.42%)\nSTEPHEN MENEZES ROAD, BOLING VILLAGE,\nVIRAR - WEST, PALGHAR - 401303.",
+    treatmentType: "1) PEST CONTROL SERVICE (as per attachment)", customer: { companyName: "M/S JOYVILLE SHAPOORJI HOUSING PVT LTD,", address: "STEPHEN MENEZES ROAD, BOLING VILLAGE,\nVIRAR - WEST, PALGHAR - 401303." }
+  };
+  document.body.innerHTML = generateInvoiceHtml({ ...base, invoiceType: new URLSearchParams(location.search).get("type") === "gst" ? "GST" : "NON_GST", gstNumber: "27AACCD9800E1ZV", hsnCode: "3808", sacCode: "998531", workOrderNumber: "FM/VIR/CAM/26-27/02", workOrderDate: "2026-03-19", tax: { cgstPercentage: 9, cgstAmount: 62.89, sgstPercentage: 9, sgstAmount: 62.89 } }, null, location.origin);
+</script></body></html>
