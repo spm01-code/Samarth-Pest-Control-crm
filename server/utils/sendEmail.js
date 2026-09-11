@@ -6,16 +6,23 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const sendMail = async (email, otp) => {
+const sendMail = async (email, otp, purpose = "REGISTRATION") => {
   try {
     if (!process.env.RESEND_API_KEY) {
       throw new Error("RESEND_API_KEY must be set in server/.env");
     }
 
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    console.log("Initializing Resend client");
+    let mailFrom = process.env.OTP_FROM_EMAIL;
+    if (process.env.NODE_ENV === "production" && !mailFrom) {
+      throw new Error("OTP_FROM_EMAIL must be set in server/.env in production");
+    }
+    if (!mailFrom) {
+      mailFrom = process.env.MAIL_FROM || "Samarth Pest Management <onboarding@resend.dev>";
+    }
 
+    const resend = new Resend(process.env.RESEND_API_KEY);
     const currentYear = new Date().getFullYear();
+    const expiryMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES, 10) || 5;
 
     const logoPath = path.join(__dirname, "logo.png");
     let logoBuffer;
@@ -34,19 +41,34 @@ const sendMail = async (email, otp) => {
       });
     }
 
-    const mailFrom = process.env.MAIL_FROM || "Samarth Pest Management <onboarding@resend.dev>";
+    const isPasswordChange = purpose === "PASSWORD_CHANGE";
+    const subject = isPasswordChange
+      ? "Password Change Verification Code - Samarth Pest Management"
+      : "Verify Your Email Address - Samarth Pest Management";
+
+    const titleText = isPasswordChange
+      ? "Verify Password Change"
+      : "Verify Your Email Address";
+
+    const messageText = isPasswordChange
+      ? "Please use the single-use verification code below to verify your password change request."
+      : "Please use the single-use verification code below to complete your registration.";
+
+    const securityWarningText = isPasswordChange
+      ? "If you did not request this password change, you can safely ignore this email. Your password will remain unchanged."
+      : "If you did not request this verification email, please secure your account credentials or ignore this email.";
 
     const { data, error } = await resend.emails.send({
       from: mailFrom,
       to: [email],
-      subject: "Email Verification - Samarth Pest Management",
+      subject,
       html: `
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Email Verification</title>
+          <title>${titleText}</title>
         </head>
         <body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #334155; -webkit-font-smoothing: antialiased;">
           <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; padding: 40px 20px;">
@@ -72,12 +94,12 @@ const sendMail = async (email, otp) => {
 
                       <!-- Header -->
                       <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin: 0 0 16px 0; text-align: center; letter-spacing: -0.025em;">
-                        Verify Your Email Address
+                        ${titleText}
                       </h2>
                       
                       <!-- Message -->
                       <p style="font-size: 14px; line-height: 22px; color: #475569; margin: 0 0 24px 0; text-align: center;">
-                        Please use the single-use verification code below to complete your registration or login.
+                        ${messageText}
                       </p>
 
                       <!-- OTP Code Display -->
@@ -95,7 +117,7 @@ const sendMail = async (email, otp) => {
 
                       <!-- Notice -->
                       <p style="font-size: 13px; line-height: 20px; color: #64748b; margin: 0 0 24px 0; text-align: center;">
-                        This code will expire in <strong style="color: #0f172a;">5 minutes</strong>. For security reasons, please do not share this OTP with anyone.
+                        This code will expire in <strong style="color: #0f172a;">${expiryMinutes} minutes</strong>. For security reasons, please do not share this OTP with anyone.
                       </p>
 
                       <!-- Divider -->
@@ -103,7 +125,7 @@ const sendMail = async (email, otp) => {
 
                       <!-- Security Warning -->
                       <p style="font-size: 11px; line-height: 16px; color: #94a3b8; margin: 0; text-align: center;">
-                        If you did not request this verification email, please secure your account credentials or ignore this email.
+                        ${securityWarningText}
                       </p>
                     </td>
                   </tr>
@@ -130,15 +152,17 @@ const sendMail = async (email, otp) => {
     });
 
     if (error) {
-      console.error("Resend API Error details:", error);
+      console.error("Resend API Error details:", error.message || error);
       throw new Error(error.message || "Resend API returned an error");
     }
 
-    console.log("Email Sent Successfully via Resend:", data);
+    console.log("Email Sent Successfully via Resend:", data?.id || "Sent");
+    return data;
   } catch (error) {
-    console.error("Email Error:", error);
+    console.error("Email Error:", error.message || "Email sending failed");
     throw new Error(error.message || "Failed to send email");
   }
 };
 
 export default sendMail;
+

@@ -19,6 +19,8 @@ const getInitialFormData = (invoice) => {
     workOrderDate: formatDateForInput(invoice?.workOrderDate),
     gstNumber: invoice?.gstNumber || "",
     particulars: invoice?.particulars || "",
+    billingPeriod: invoice?.billingPeriod || "",
+    contractPeriod: invoice?.contractPeriod || "",
     premisesTreated: invoice?.premisesTreated || "",
     treatmentType: invoice?.treatmentType || "",
     hsnCode: invoice?.hsnCode || "",
@@ -222,6 +224,36 @@ function EditInvoiceModal({
                 name="treatmentType"
                 value={formData.treatmentType}
                 onChange={handleChange}
+                className="w-full border rounded-lg p-2"
+              />
+            </div>
+
+            <div>
+              <label className="block mb-1 font-medium">
+                Billing Period
+              </label>
+
+              <input
+                type="text"
+                name="billingPeriod"
+                value={formData.billingPeriod}
+                onChange={handleChange}
+                placeholder="e.g. 01/09/2026 to 30/09/2026"
+                className="w-full border rounded-lg p-2"
+              />
+            </div>
+
+            <div>
+              <label className="block mb-1 font-medium">
+                Contract Period
+              </label>
+
+              <input
+                type="text"
+                name="contractPeriod"
+                value={formData.contractPeriod}
+                onChange={handleChange}
+                placeholder="e.g. 01/09/2026 to 31/08/2027"
                 className="w-full border rounded-lg p-2"
               />
             </div>

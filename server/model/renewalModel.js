@@ -79,6 +79,15 @@ const renewalSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    paymentHistory: [
+      {
+        receivedAmount: { type: Number, default: 0 },
+        date: { type: Date },
+        mode: { type: String, trim: true },
+        balance: { type: Number, default: 0 },
+        remark: { type: String, trim: true },
+      },
+    ],
     status: {
       type: String,
       enum: ["Draft", "Sent", "Completed"],

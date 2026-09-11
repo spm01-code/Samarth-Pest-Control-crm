@@ -461,6 +461,16 @@ function InvoiceDetails() {
             {invoice.treatmentType || "-"}
           </p>
 
+          <p>
+            <strong>Billing Period:</strong>{" "}
+            {invoice.billingPeriod || "-"}
+          </p>
+
+          <p>
+            <strong>Contract Period:</strong>{" "}
+            {invoice.contractPeriod || "-"}
+          </p>
+
           {invoice.invoiceType !== "NON_GST" && <p>
             <strong>HSN Code:</strong>{" "}
             {invoice.hsnCode || "-"}

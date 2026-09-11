@@ -119,7 +119,16 @@ const getContractPeriodDates = (renewalDate) => {
 
 export const createRenewal = async (req, res) => {
   try {
-    const { customer: customerId, renewalDate, paymentTerm, notes, status, services } = req.body;
+    const {
+      customer: customerId,
+      renewalDate,
+      paymentTerm,
+      notes,
+      status,
+      services,
+      contractPeriod: customContractPeriod,
+      amountInWords: customAmountInWords,
+    } = req.body;
 
     if (!customerId) {
       return res.status(400).json({
@@ -158,7 +167,7 @@ export const createRenewal = async (req, res) => {
     );
 
     const renewalDateVal = renewalDate || new Date();
-    const { contractStartDate, contractEndDate, contractPeriod } = getContractPeriodDates(renewalDateVal);
+    const { contractStartDate, contractEndDate, contractPeriod: defaultContractPeriod } = getContractPeriodDates(renewalDateVal);
 
     const renewalDoc = await Renewal.create({
       renewalNumber,
@@ -167,11 +176,11 @@ export const createRenewal = async (req, res) => {
       services,
       contractStartDate,
       contractEndDate,
-      contractPeriod,
+      contractPeriod: customContractPeriod || defaultContractPeriod,
       subtotal,
       totalTax: 0,
       totalAmount,
-      amountInWords: `Rupees ${numberToWords(totalAmount)} Only`,
+      amountInWords: customAmountInWords || `Rupees ${numberToWords(totalAmount)} Only`,
       paymentTerm: paymentTerm || "Quarterly.",
       notes,
       status: status || "Draft",
@@ -233,9 +242,9 @@ export const updateRenewal = async (req, res) => {
 
     if (updateData.renewalDate) {
       const { contractStartDate, contractEndDate, contractPeriod } = getContractPeriodDates(updateData.renewalDate);
-      updateData.contractStartDate = contractStartDate;
-      updateData.contractEndDate = contractEndDate;
-      updateData.contractPeriod = contractPeriod;
+      updateData.contractStartDate = updateData.contractStartDate || contractStartDate;
+      updateData.contractEndDate = updateData.contractEndDate || contractEndDate;
+      updateData.contractPeriod = updateData.contractPeriod || contractPeriod;
     }
 
     const updatedRenewal = await Renewal.findByIdAndUpdate(

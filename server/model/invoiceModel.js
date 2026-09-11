@@ -35,6 +35,16 @@ const invoiceSchema = new mongoose.Schema(
       required: true,
     },
 
+    billingPeriod: {
+      type: String,
+      trim: true,
+    },
+
+    contractPeriod: {
+      type: String,
+      trim: true,
+    },
+
     // Work Order Details
     workOrderNumber: {
       type: String,

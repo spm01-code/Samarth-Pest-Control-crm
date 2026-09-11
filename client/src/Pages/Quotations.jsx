@@ -36,12 +36,16 @@ function Quotations() {
     const matchesType =
       typeFilter === "All" ? true : qType === typeFilter;
 
+    const searchLower = search.toLowerCase();
     const matchesSearch =
-      (quotation.quotationNumber?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (quotation.customer?.fullName?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (quotation.premises?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (quotation.billingTerm?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      qType.toLowerCase().includes(search.toLowerCase());
+      (quotation.quotationNumber?.toLowerCase() || "").includes(searchLower) ||
+      (quotation.customer?.fullName?.toLowerCase() || "").includes(searchLower) ||
+      (quotation.customer?.phone || "").includes(search) ||
+      (quotation.customer?.alternatePhone || "").includes(search) ||
+      (quotation.customer?.companyName?.toLowerCase() || "").includes(searchLower) ||
+      (quotation.premises?.toLowerCase() || "").includes(searchLower) ||
+      (quotation.billingTerm?.toLowerCase() || "").includes(searchLower) ||
+      qType.toLowerCase().includes(searchLower);
 
     return matchesStatus && matchesType && matchesSearch;
   });

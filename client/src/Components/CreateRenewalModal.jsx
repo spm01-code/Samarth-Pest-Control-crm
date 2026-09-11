@@ -25,6 +25,7 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
     renewalDate: today(),
     customer: "",
     status: "Draft",
+    contractPeriod: "",
     services: [emptyService()],
     paymentTerm: "Quarterly.",
     notes: "",
@@ -87,6 +88,7 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
           initialRenewal.customer ||
           "",
         status: initialRenewal.status || "Draft",
+        contractPeriod: initialRenewal.contractPeriod || "",
         services:
           Array.isArray(initialRenewal.services) &&
           initialRenewal.services.length > 0
@@ -118,6 +120,7 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
       renewalDate: today(),
       customer: "",
       status: "Draft",
+      contractPeriod: "",
       services: [emptyService()],
       paymentTerm: "Quarterly.",
       notes: "",
@@ -188,9 +191,19 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
     }
   };
 
-  const matches = customers.filter((customer) =>
-    customer.fullName?.toLowerCase().includes(search.toLowerCase()),
-  );
+  const searchLower = search.toLowerCase();
+  const matches = customers.filter((customer) => {
+    const fullName = customer.fullName?.toLowerCase() || "";
+    const phone = customer.phone || "";
+    const alternatePhone = customer.alternatePhone || "";
+    const companyName = customer.companyName?.toLowerCase() || "";
+    return (
+      fullName.includes(searchLower) ||
+      phone.includes(search) ||
+      alternatePhone.includes(search) ||
+      companyName.includes(searchLower)
+    );
+  });
 
   if (!isOpen) return null;
 
@@ -254,7 +267,7 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
                 setShowCustomers(true);
               }}
               className="mt-2 w-full rounded-lg border p-3 bg-white"
-              placeholder="Search customer..."
+              placeholder="Search customer by name, phone, or company..."
               autoComplete="off"
             />
             {showCustomers && (
@@ -277,8 +290,14 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
                     }}
                     className="block w-full p-3 text-left hover:bg-slate-100"
                   >
-                    <span className="block font-medium">{customer.fullName}</span>
-                    <span className="text-sm text-gray-500">{customer.address}</span>
+                    <span className="block font-medium">
+                      {customer.fullName}
+                      {customer.companyName ? ` (${customer.companyName})` : ""}
+                    </span>
+                    <span className="text-sm text-gray-500">
+                      {customer.phone ? `Phone: ${customer.phone} ` : ""}
+                      {customer.address ? `• ${customer.address}` : ""}
+                    </span>
                   </button>
                 ))}
                 {matches.length === 0 && (
@@ -381,7 +400,18 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="font-medium">
+              Contract Period
+              <input
+                value={form.contractPeriod}
+                onChange={(e) =>
+                  setForm({ ...form, contractPeriod: e.target.value })
+                }
+                className="mt-2 w-full rounded-lg border p-3 bg-white"
+                placeholder="e.g. 01/01/2026 To 31/12/2026 (Optional)"
+              />
+            </label>
             <label className="font-medium">
               Payment Term
               <input
@@ -426,7 +456,7 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
               Cancel
             </button>
             <button className="rounded-lg bg-blue-800/80 px-5 py-2.5 text-white hover:bg-blue-800">
-              Create Renewal
+              {initialRenewal ? "Update Renewal" : "Create Renewal"}
             </button>
           </div>
         </form>

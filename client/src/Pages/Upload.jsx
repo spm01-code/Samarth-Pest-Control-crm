@@ -186,6 +186,7 @@ function Upload() {
   const [targetEntity, setTargetEntity] = useState("Customer");
   const [availableEntities, setAvailableEntities] = useState([]);
   const [headers, setHeaders] = useState([]);
+  const [columns, setColumns] = useState([]);
   const [sampleRows, setSampleRows] = useState([]);
 
   // Step 3 Data
@@ -198,6 +199,7 @@ function Upload() {
 
   // Step 4 Data
   const [validationSummary, setValidationSummary] = useState(null);
+  const [reconciliationReport, setReconciliationReport] = useState([]);
   const [rows, setRows] = useState([]);
   const [unmappedHeaders, setUnmappedHeaders] = useState([]);
   const [paymentHeaders, setPaymentHeaders] = useState([]);
@@ -263,6 +265,7 @@ function Upload() {
     try {
       const res = await selectImportSheet(importSessionId, selectedSheet, token);
       setHeaders(res.headers || []);
+      setColumns(res.columns || []);
       setSampleRows(res.sampleRows || []);
       setTargetEntity(res.detectedEntity || "Customer");
       setMappings(res.defaultMappings || {});
@@ -277,11 +280,17 @@ function Upload() {
   };
 
   // Handle Mapping Change
-  const handleMappingChange = (excelHeader, targetFieldKey) => {
-    setMappings((prev) => ({
-      ...prev,
-      [excelHeader]: targetFieldKey,
-    }));
+  const handleMappingChange = (columnKey, targetFieldKey, altHeader) => {
+    setMappings((prev) => {
+      const updated = {
+        ...prev,
+        [columnKey]: targetFieldKey,
+      };
+      if (altHeader) {
+        updated[altHeader] = targetFieldKey;
+      }
+      return updated;
+    });
   };
 
   // Run Validation
@@ -299,6 +308,7 @@ function Upload() {
         token
       );
       setValidationSummary(res.summary);
+      setReconciliationReport(res.reconciliationReport || []);
       setRows(res.rows || []);
       setUnmappedHeaders(res.unmappedHeaders || []);
       setPaymentHeaders(res.paymentHeaders || []);
@@ -536,13 +546,18 @@ function Upload() {
 
             {/* Mapping Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {headers.map((header, idx) => {
-                const currentMappedField = mappings[header] || "UNMAPPED";
+              {(columns && columns.length > 0
+                ? columns
+                : headers.map((h, i) => ({ colIdx: i, header: h, columnKey: `col_${i}_${h}` }))
+              ).map((col) => {
+                const header = col.header;
+                const columnKey = col.columnKey || `col_${col.colIdx}_${header}`;
+                const currentMappedField = mappings[columnKey] || mappings[header] || "UNMAPPED";
                 const isUnmapped = currentMappedField === "UNMAPPED";
 
                 return (
                   <div
-                    key={`${header}-${idx}`}
+                    key={columnKey}
                     className={`p-4 rounded-xl border transition ${
                       isUnmapped
                         ? "bg-slate-900/60 border-slate-700/80"
@@ -551,6 +566,7 @@ function Upload() {
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-bold text-slate-300 truncate max-w-[200px]" title={header}>
+                        <span className="text-cyan-400 font-mono text-[10px] mr-1.5">#{col.colIdx + 1}</span>
                         {header}
                       </span>
                       <span
@@ -564,7 +580,7 @@ function Upload() {
 
                     <select
                       value={currentMappedField}
-                      onChange={(e) => handleMappingChange(header, e.target.value)}
+                      onChange={(e) => handleMappingChange(columnKey, e.target.value, header)}
                       className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-cyan-400"
                     >
                       <option value="UNMAPPED">-- Do Not Import (Unmapped) --</option>
@@ -632,6 +648,81 @@ function Upload() {
                 <p className="text-3xl font-extrabold text-blue-300 mt-1">{validationSummary.duplicateCount}</p>
               </div>
             </div>
+
+            {/* Field Reconciliation & Data Integrity Report */}
+            {reconciliationReport && reconciliationReport.length > 0 && (
+              <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5 shadow-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <HiOutlineShieldCheck className="text-cyan-400 size-5" />
+                    Field Reconciliation & Data Loss Safeguard Report
+                  </h3>
+                  <span className="text-xs text-slate-400">
+                    {reconciliationReport.filter((r) => r.status === "PASS").length} Mapped / {reconciliationReport.length} Total Columns
+                  </span>
+                </div>
+                <div className="overflow-x-auto max-h-64 overflow-y-auto border border-slate-700/50 rounded-xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] tracking-wider sticky top-0 border-b border-slate-700">
+                      <tr>
+                        <th className="p-2.5">Col #</th>
+                        <th className="p-2.5">Excel Header</th>
+                        <th className="p-2.5">Target CRM Field</th>
+                        <th className="p-2.5">Populated Rows</th>
+                        <th className="p-2.5">Sample Values</th>
+                        <th className="p-2.5">Safeguard Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700/40 text-slate-300 bg-slate-900/30">
+                      {reconciliationReport.map((col) => {
+                        const isRisk = col.status === "DATA_LOSS_RISK";
+                        const isWarn = col.status === "WARNING";
+                        const isPass = col.status === "PASS";
+                        return (
+                          <tr key={col.columnKey || col.colIdx} className="hover:bg-slate-700/30 transition">
+                            <td className="p-2.5 font-mono text-slate-500">#{col.colIdx + 1}</td>
+                            <td className="p-2.5 font-semibold text-slate-200">{col.header}</td>
+                            <td className="p-2.5">
+                              {col.targetField !== "UNMAPPED" ? (
+                                <span className="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded font-mono text-[11px]">
+                                  {col.targetField}
+                                </span>
+                              ) : (
+                                <span className="text-slate-500 italic">Do Not Import</span>
+                              )}
+                            </td>
+                            <td className="p-2.5">{col.totalValues}</td>
+                            <td className="p-2.5 max-w-[200px] truncate text-slate-400" title={col.sampleValues.join(", ")}>
+                              {col.sampleValues.length > 0 ? col.sampleValues.join(", ") : "-"}
+                            </td>
+                            <td className="p-2.5">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  isRisk
+                                    ? "bg-red-500/20 text-red-300 border border-red-500/40"
+                                    : isWarn
+                                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                                    : isPass
+                                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                                    : "bg-slate-800 text-slate-400"
+                                }`}
+                              >
+                                {col.status.replace(/_/g, " ")}
+                              </span>
+                              {col.riskReason && (
+                                <p className={`text-[10px] mt-0.5 ${isRisk ? "text-red-300" : isWarn ? "text-amber-300" : "text-slate-400"}`}>
+                                  {col.riskReason}
+                                </p>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Unmapped & Payment Headers Banner */}
             {(unmappedHeaders.length > 0 || paymentHeaders.length > 0) && (

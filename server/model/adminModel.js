@@ -38,12 +38,34 @@ const adminSchema = new mongoose.Schema(
       type: Date,
     },
 
+    otpAttempts: {
+      type: Number,
+      default: 0,
+    },
+
+    lastOtpSentAt: {
+      type: Date,
+    },
+
     resetPasswordOtp: {
       type: String,
     },
 
     resetPasswordOtpExpiry: {
       type: Date,
+    },
+
+    resetPasswordOtpAttempts: {
+      type: Number,
+      default: 0,
+    },
+
+    lastResetPasswordOtpSentAt: {
+      type: Date,
+    },
+
+    pendingPassword: {
+      type: String,
     },
 
     refreshToken: {

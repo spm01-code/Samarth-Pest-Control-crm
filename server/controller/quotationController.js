@@ -29,8 +29,20 @@ export const createQuotation = async (req, res) => {
       documentType
     );
 
+    let totalAmount = req.body.totalAmount;
+    if (
+      (totalAmount === undefined || totalAmount === null || totalAmount === "") &&
+      Array.isArray(req.body.services)
+    ) {
+      totalAmount = req.body.services.reduce(
+        (sum, s) => sum + (Number(s.cost ?? s.amount) || 0),
+        0
+      );
+    }
+
     const quotation = await Quotation.create({
       ...req.body,
+      ...(totalAmount !== undefined && totalAmount !== null ? { totalAmount } : {}),
       quotationType,
       quotationNumber,
     });
@@ -141,9 +153,20 @@ export const getCustomerQuotations = async (req, res) => {
 
 export const updateQuotation = async (req, res) => {
   try {
+    const updateData = { ...req.body };
+    if (
+      (updateData.totalAmount === undefined || updateData.totalAmount === null || updateData.totalAmount === "") &&
+      Array.isArray(updateData.services)
+    ) {
+      updateData.totalAmount = updateData.services.reduce(
+        (sum, s) => sum + (Number(s.cost ?? s.amount) || 0),
+        0
+      );
+    }
+
     const updatedQuotation = await Quotation.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updateData,
       {
         new: true,
         runValidators: true,

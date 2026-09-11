@@ -60,6 +60,121 @@ const firstValue = (...values) => {
   return "";
 };
 
+const isPlaceholder = (value) => {
+  if (value === undefined || value === null) return true;
+  const s = String(value).trim().toUpperCase();
+  return (
+    s === "" ||
+    s === "N/A" ||
+    s === "NA" ||
+    s === "-" ||
+    s === "--" ||
+    s === "NULL" ||
+    s === "UNDEFINED" ||
+    s === "ADDRESS NOT PROVIDED"
+  );
+};
+
+const firstNonPlaceholderValue = (...values) => {
+  for (const value of values) {
+    if (!isPlaceholder(value)) {
+      return typeof value === "string" ? value.trim() : value;
+    }
+  }
+
+  return "";
+};
+
+export const getBillingPeriod = (invoiceDate) => {
+  if (!invoiceDate) return "";
+  const date = new Date(invoiceDate);
+  if (Number.isNaN(date.getTime())) return "";
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+  const formatDateString = (d) => {
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = d.toLocaleDateString("en-GB", { month: "long" }).toUpperCase();
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}`;
+  };
+
+  return `${formatDateString(start)} to ${formatDateString(end)}`;
+};
+
+export const getContractPeriodDates = (renewalDate) => {
+  const date = renewalDate ? new Date(renewalDate) : new Date();
+  if (Number.isNaN(date.getTime())) {
+    return { contractPeriod: "" };
+  }
+  let startYear = date.getFullYear();
+  let startMonth = date.getMonth() + 1;
+  if (startMonth > 11) {
+    startMonth = 0;
+    startYear += 1;
+  }
+  const startDate = new Date(startYear, startMonth, 1);
+  const endDate = new Date(startYear + 1, startMonth, 0);
+
+  const formatLongDate = (d) =>
+    d.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    }).toUpperCase();
+
+  const contractPeriod = `${formatLongDate(startDate)} to ${formatLongDate(endDate)} (12 Months)`;
+
+  return {
+    contractStartDate: startDate,
+    contractEndDate: endDate,
+    contractPeriod,
+  };
+};
+
+export const numberToWords = (amount) => {
+  const ones = [
+    "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen",
+  ];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  const convertBelowHundred = (number) => {
+    if (number < 20) return ones[number];
+    const ten = Math.floor(number / 10);
+    const one = number % 10;
+    return `${tens[ten]} ${ones[one]}`.trim();
+  };
+
+  const convertBelowThousand = (number) => {
+    const hundred = Math.floor(number / 100);
+    const rest = number % 100;
+    if (hundred && rest) {
+      return `${ones[hundred]} Hundred ${convertBelowHundred(rest)}`;
+    }
+    if (hundred) {
+      return `${ones[hundred]} Hundred`;
+    }
+    return convertBelowHundred(rest);
+  };
+
+  const rupees = Math.round(Number(amount || 0));
+  if (rupees === 0) return "Zero";
+
+  const crore = Math.floor(rupees / 10000000);
+  const lakh = Math.floor((rupees % 10000000) / 100000);
+  const thousand = Math.floor((rupees % 100000) / 1000);
+  const rest = rupees % 1000;
+
+  let words = "";
+  if (crore) words += `${convertBelowThousand(crore)} Crore `;
+  if (lakh) words += `${convertBelowThousand(lakh)} Lakh `;
+  if (thousand) words += `${convertBelowThousand(thousand)} Thousand `;
+  if (rest) words += convertBelowThousand(rest);
+
+  return words.trim();
+};
+
 /**
  * Get active document template.
  */
@@ -77,13 +192,23 @@ const getActiveTemplate = async (documentType) => {
     throw new Error("Template file path is missing");
   }
 
-  if (!fs.existsSync(template.filePath)) {
-    throw new Error(
-      "The active template file could not be found on the server",
-    );
+  let resolvedPath = template.filePath;
+  if (!fs.existsSync(resolvedPath)) {
+    const fileName = path.basename(resolvedPath);
+    const localUploadsPath = path.resolve(process.cwd(), "uploads", "templates", fileName);
+    if (fs.existsSync(localUploadsPath)) {
+      resolvedPath = localUploadsPath;
+    } else {
+      throw new Error(
+        "The active template file could not be found on the server",
+      );
+    }
   }
 
-  return template;
+  return {
+    ...(template.toObject ? template.toObject() : template),
+    filePath: resolvedPath,
+  };
 };
 
 /**
@@ -193,23 +318,47 @@ const buildCustomerData = (customer) => {
 
 const buildInvoiceServices = (invoice) => {
   if (Array.isArray(invoice?.services) && invoice.services.length > 0) {
-    return invoice.services.map((service, index) => ({
-      serviceNumber: String(index + 1),
-      serviceName: service?.serviceName || invoice?.treatmentType || "",
-      description: service?.desc || "",
-      amount: formatAmount(service?.amount),
-      serviceDate: formatDate(service?.serviceDate),
-      nextServiceDate: formatDate(service?.nextServiceDate),
-      address: service?.address || invoice?.premisesTreated || "",
-      location: service?.address || invoice?.premisesTreated || "",
-      frequency: service?.frequency || "",
-      status: service?.status || "",
-      premisesTreated: service?.address || invoice?.premisesTreated || "",
-      treatmentType: service?.serviceName || invoice?.treatmentType || "",
-    }));
+    return invoice.services.map((service, index) => {
+      const premisesTreated = firstNonPlaceholderValue(
+        invoice?.premisesTreated,
+        service?.premisesTreated,
+        service?.address,
+        service?.location,
+        invoice?.customer?.address,
+        "",
+      );
+      const address = firstNonPlaceholderValue(
+        service?.address,
+        service?.location,
+        invoice?.premisesTreated,
+        invoice?.customer?.address,
+        "",
+      );
+
+      return {
+        serviceNumber: String(index + 1),
+        serviceName: service?.serviceName || invoice?.treatmentType || "",
+        description: service?.desc || "",
+        amount: formatAmount(service?.amount),
+        serviceDate: formatDate(service?.serviceDate),
+        nextServiceDate: formatDate(service?.nextServiceDate),
+        address,
+        location: address,
+        frequency: service?.frequency || "",
+        status: service?.status || "",
+        premisesTreated,
+        treatmentType: service?.serviceName || invoice?.treatmentType || "",
+      };
+    });
   }
 
   if (invoice?.premisesTreated || invoice?.treatmentType) {
+    const premisesTreated = firstNonPlaceholderValue(
+      invoice?.premisesTreated,
+      invoice?.customer?.address,
+      "",
+    );
+
     return [
       {
         serviceNumber: "1",
@@ -218,11 +367,11 @@ const buildInvoiceServices = (invoice) => {
         amount: formatAmount(invoice?.subtotal || invoice?.totalAmount),
         serviceDate: formatDate(invoice?.invoiceDate),
         nextServiceDate: "",
-        address: invoice?.premisesTreated || "",
-        location: invoice?.premisesTreated || "",
+        address: premisesTreated,
+        location: premisesTreated,
         frequency: "",
         status: "",
-        premisesTreated: invoice?.premisesTreated || "",
+        premisesTreated,
         treatmentType: invoice?.treatmentType || "",
       },
     ];
@@ -239,7 +388,14 @@ const buildInvoiceTreatments = (invoice) => {
   if (Array.isArray(invoice?.services) && invoice.services.length > 0) {
     return invoice.services.map((service, index) => ({
       treatmentNumber: String(index + 1),
-      premisesTreated: service?.address || invoice?.premisesTreated || "",
+      premisesTreated: firstNonPlaceholderValue(
+        invoice?.premisesTreated,
+        service?.premisesTreated,
+        service?.address,
+        service?.location,
+        invoice?.customer?.address,
+        "",
+      ),
       treatmentType: service?.serviceName || invoice?.treatmentType || "",
       description: service?.desc || "",
       amount: formatAmount(service?.amount),
@@ -254,7 +410,11 @@ const buildInvoiceTreatments = (invoice) => {
     return [
       {
         treatmentNumber: "1",
-        premisesTreated: invoice?.premisesTreated || "",
+        premisesTreated: firstNonPlaceholderValue(
+          invoice?.premisesTreated,
+          invoice?.customer?.address,
+          "",
+        ),
         treatmentType: invoice?.treatmentType || "",
         description: "",
         amount: formatAmount(invoice?.subtotal || invoice?.totalAmount),
@@ -281,11 +441,14 @@ const buildQuotationServices = (quotation) => {
   return quotation.services.map((service, index) => ({
     serviceNumber: String(index + 1),
 
-    location: firstValue(
-      service?.address,
+    location: firstNonPlaceholderValue(
       service?.location,
+      service?.address,
       service?.premisesTreated,
       quotation?.premisesTreated,
+      quotation?.premises,
+      quotation?.customer?.address,
+      "",
     ),
 
     serviceName: firstValue(service?.serviceName, service?.name),
@@ -336,13 +499,15 @@ const buildRenewalServices = (renewal) => {
       service?.serviceType,
     );
 
-    const location = firstValue(
+    const location = firstNonPlaceholderValue(
       service?.address,
       service?.location,
       service?.premisesTreated,
       renewal?.premisesTreated,
       renewal?.premises,
       renewal?.address,
+      renewal?.customer?.address,
+      "",
     );
 
     const frequency = firstValue(
@@ -499,9 +664,13 @@ export const generateInvoiceDocx = async (invoice) => {
 
       invoiceType: invoice.invoiceType || "",
 
-      billingPeriod: invoice.billingPeriod || "",
+      billingPeriod: firstValue(
+        invoice.billingPeriod,
+        invoice.invoiceDate ? getBillingPeriod(invoice.invoiceDate) : "",
+        "",
+      ),
 
-      contractPeriod: invoice.contractPeriod || "",
+      contractPeriod: firstValue(invoice.contractPeriod, ""),
 
       workOrderNumber: invoice.workOrderNumber || "",
 
@@ -517,7 +686,12 @@ export const generateInvoiceDocx = async (invoice) => {
 
       particulars: invoice.particulars || "",
 
-      premisesTreated: invoice.premisesTreated || "",
+      premisesTreated: firstNonPlaceholderValue(
+        invoice.premisesTreated,
+        invoice.services?.[0]?.address,
+        invoice.customer?.address,
+        "",
+      ),
 
       treatmentType: invoice.treatmentType || "",
 
@@ -745,11 +919,19 @@ export const generateQuotationDocx = async (quotation) => {
 
     const services = buildQuotationServices(quotation);
 
+    const computedServicesTotal = Array.isArray(quotation?.services)
+      ? quotation.services.reduce(
+          (sum, s) => sum + (Number(s.cost ?? s.amount) || 0),
+          0,
+        )
+      : 0;
+
     const totalAmount = firstValue(
       quotation.totalAmount,
       quotation.total,
       quotation.grandTotal,
       quotation.amount,
+      computedServicesTotal > 0 ? computedServicesTotal : "",
     );
 
     const data = {
@@ -799,9 +981,11 @@ export const generateQuotationDocx = async (quotation) => {
 
       subject: firstValue(quotation.subject, quotation.title),
 
-      premisesTreated: firstValue(
+      premisesTreated: firstNonPlaceholderValue(
         quotation.premisesTreated,
         quotation.premises,
+        customerData.customerAddress,
+        "",
       ),
 
       particulars: firstValue(
@@ -968,12 +1152,13 @@ export const generateContractRenewalDocx = async (renewal) => {
     // PREMISES
     // ------------------------------------------------------
 
-    const premisesTreated = firstValue(
+    const premisesTreated = firstNonPlaceholderValue(
       renewal.premisesTreated,
       renewal.premises,
       renewal.location,
       renewal.address,
       customer.address,
+      "",
     );
 
     // ------------------------------------------------------
@@ -987,13 +1172,19 @@ export const generateContractRenewalDocx = async (renewal) => {
     );
 
     // ------------------------------------------------------
-    // CONTRACT PERIOD
-    // ------------------------------------------------------
+    const defaultRenewalPeriod = renewal.renewalDate
+      ? getContractPeriodDates(renewal.renewalDate).contractPeriod
+      : "";
 
     const contractPeriod = firstValue(
       renewal.contractPeriod,
+      (contractStartDate && contractEndDate)
+        ? `${formatDate(contractStartDate)} to ${formatDate(contractEndDate)}`
+        : "",
+      defaultRenewalPeriod,
       renewal.period,
       renewal.duration,
+      "",
     );
 
     // ------------------------------------------------------
@@ -1101,7 +1292,11 @@ export const generateContractRenewalDocx = async (renewal) => {
 
       amount: formatAmount(renewalAmount),
 
-      amountInWords: renewal.amountInWords || "",
+      amountInWords: firstValue(
+        renewal.amountInWords,
+        renewalAmount ? `Rupees ${numberToWords(renewalAmount)} Only` : "",
+        "",
+      ),
 
       // ====================================================
       // PAYMENT

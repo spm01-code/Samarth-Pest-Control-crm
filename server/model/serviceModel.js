@@ -16,6 +16,10 @@ const serviceSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    operatorName: {
+      type: String,
+      trim: true,
+    },
     serviceName: {
       type: String,
       required: true,

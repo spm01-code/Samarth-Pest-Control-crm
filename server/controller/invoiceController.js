@@ -115,6 +115,8 @@ export const createInvoice = async (req, res) => {
 
       notes,
       dueDate,
+      billingPeriod,
+      contractPeriod,
     } = req.body;
 
     if (!customerId) {
@@ -198,6 +200,9 @@ export const createInvoice = async (req, res) => {
 
       dueDate,
 
+      billingPeriod,
+      contractPeriod,
+
       customer: customer._id,
 
       services: serviceDocs.map((service) => service._id),
@@ -273,9 +278,16 @@ export const createInvoice = async (req, res) => {
 
 export const getInvoices = async (req, res) => {
   try {
-    const invoices = await Invoice.find({
+    const filter = {
       isDeleted: false,
-    })
+    };
+
+    const { invoiceType } = req.query;
+    if (invoiceType && ["GST", "NON_GST"].includes(invoiceType)) {
+      filter.invoiceType = invoiceType;
+    }
+
+    const invoices = await Invoice.find(filter)
       .populate("customer")
       .populate("services")
       .populate("generatedBy", "-password -refreshToken")

@@ -21,9 +21,19 @@ function Customers() {
 
   const customerList = Array.isArray(customers) ? customers : [];
 
-  const filteredCustomers = customerList.filter((customer) =>
-    customer.fullName?.toLowerCase().includes(search.toLowerCase()),
-  );
+  const searchLower = search.toLowerCase();
+  const filteredCustomers = customerList.filter((customer) => {
+    const fullName = customer.fullName?.toLowerCase() || "";
+    const phone = customer.phone || "";
+    const alternatePhone = customer.alternatePhone || "";
+    const companyName = customer.companyName?.toLowerCase() || "";
+    return (
+      fullName.includes(searchLower) ||
+      phone.includes(search) ||
+      alternatePhone.includes(search) ||
+      companyName.includes(searchLower)
+    );
+  });
 
   const getStatusClass = (status) => {
     if (status?.toLowerCase() === "active") {
@@ -87,10 +97,10 @@ function Customers() {
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
         <input
           type="text"
-          placeholder="Search Customer..."
+          placeholder="Search by name, phone, alternate phone, or company..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full max-w-md x  x`x`xx`px-1 py-2.5 pl-3 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600"
+          className="w-full max-w-md px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600"
         />
       </div>
 

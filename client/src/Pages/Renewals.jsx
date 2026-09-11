@@ -25,10 +25,15 @@ function Renewals() {
   const renewalList = Array.isArray(renewals) ? renewals : [];
 
   const filteredRenewals = renewalList.filter((renewal) => {
+    const searchLower = search.toLowerCase();
     return (
-      (renewal.renewalNumber?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (renewal.customer?.fullName?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (renewal.customer?.address?.toLowerCase() || "").includes(search.toLowerCase())
+      (renewal.renewalNumber?.toLowerCase() || "").includes(searchLower) ||
+      (renewal.customer?.fullName?.toLowerCase() || "").includes(searchLower) ||
+      (renewal.customer?.phone || "").includes(search) ||
+      (renewal.customer?.alternatePhone || "").includes(search) ||
+      (renewal.customer?.companyName?.toLowerCase() || "").includes(searchLower) ||
+      (renewal.customer?.address?.toLowerCase() || "").includes(searchLower) ||
+      (renewal.contractPeriod?.toLowerCase() || "").includes(searchLower)
     );
   });
 
@@ -70,7 +75,7 @@ function Renewals() {
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
         <input
           type="text"
-          placeholder="Search by Renewal No, Customer, or Address..."
+          placeholder="Search by Renewal No, Customer, Phone, or Address..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full max-w-md px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"

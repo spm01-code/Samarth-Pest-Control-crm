@@ -22,6 +22,7 @@ import {
 } from "../API/companySettingAPI";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import ChangePasswordModal from "../Components/ChangePasswordModal";
 
 function Settings() {
   const { user } = useSelector((state) => state.auth);
@@ -51,11 +52,8 @@ function Settings() {
     upiId: "8356080548@okbizaxis"
   });
 
-  const [passwordData, setPasswordData] = useState({
-    oldPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  });
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+
 
   // 2. Prefixes & Numbering State
   const [numberingYear, setNumberingYear] = useState(new Date().getFullYear());
@@ -225,16 +223,6 @@ function Settings() {
     } finally {
       setSavingCompany(false);
     }
-  };
-
-  const handleChangePassword = (e) => {
-    e.preventDefault();
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast.warning("New passwords do not match!");
-      return;
-    }
-    setPasswordData({ oldPassword: "", newPassword: "", confirmPassword: "" });
-    toast.success("Password updated successfully!");
   };
 
   const handleSavePrefixes = async (e) => {
@@ -548,49 +536,27 @@ function Settings() {
                   <hr className="border-slate-100" />
 
                   {/* Password Reset Section */}
-                  <form onSubmit={handleChangePassword} className="space-y-4">
-                    <h3 className="text-sm font-semibold text-slate-800">Change Password</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Old Password</label>
-                        <input
-                          type="password"
-                          required
-                          value={passwordData.oldPassword}
-                          onChange={(e) => setPasswordData({ ...passwordData, oldPassword: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 outline-none focus:border-blue-600 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">New Password</label>
-                        <input
-                          type="password"
-                          required
-                          value={passwordData.newPassword}
-                          onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 outline-none focus:border-blue-600 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Confirm New Password</label>
-                        <input
-                          type="password"
-                          required
-                          value={passwordData.confirmPassword}
-                          onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 outline-none focus:border-blue-600 text-xs"
-                        />
-                      </div>
+                  <div className="bg-slate-50 border border-slate-200/70 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                        <span>Account Password</span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
+                          OTP Protected
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Change your login password with secure email verification code delivered via Resend
+                      </p>
                     </div>
-                    <div className="flex justify-end pt-2">
-                      <button
-                        type="submit"
-                        className="bg-slate-800 hover:bg-slate-900 text-white font-medium text-xs px-4 py-2 rounded-lg transition"
-                      >
-                        Update Password
-                      </button>
-                    </div>
-                  </form>
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordModal(true)}
+                      className="bg-slate-800 hover:bg-slate-900 text-white font-medium text-xs px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      Change Password
+                    </button>
+                  </div>
+
                 </div>
               </div>
             </div>
@@ -1167,8 +1133,15 @@ function Settings() {
           </div>
         </div>
       )}
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+      />
     </div>
   );
 }
 
 export default Settings;
+

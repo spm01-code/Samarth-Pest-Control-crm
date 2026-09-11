@@ -1,3 +1,5 @@
+import XLSX from "xlsx";
+
 /**
  * Import Classifier Utility
  * Contains deterministic rules to identify sheet target entities based on:
@@ -52,16 +54,41 @@ function normalizeString(val) {
 
 /**
  * Classifies a worksheet based on its headers and row data
- * 
- * @param {string} workbookName 
- * @param {string} sheetName 
- * @param {Array<Array<any>>} rawRows 
- * @param {number} headerRowIndex - 1-indexed header row
- * @param {Array<string>} headers - Headers extracted from the sheet
- * @returns {object} Structured classification report
  */
-export function classifyWorksheet(workbookName, sheetName, rawRows, headerRowIndex, headers) {
-  const rowCount = rawRows.length;
+export function classifyWorksheet(workbookOrName, sheetName, rawRows, headerRowIndex, headers) {
+  let workbookName = typeof workbookOrName === "string" ? workbookOrName : "workbook.xlsx";
+  let actualRawRows = rawRows;
+  let actualHeaderRowIndex = headerRowIndex !== undefined ? headerRowIndex : 0;
+  let actualHeaders = headers;
+
+  if (workbookOrName && typeof workbookOrName === "object" && workbookOrName.Sheets) {
+    const sheet = workbookOrName.Sheets[sheetName];
+    if (sheet) {
+      actualRawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+      actualHeaderRowIndex = 0;
+      let maxCells = 0;
+      for (let i = 0; i < Math.min(actualRawRows.length, 10); i++) {
+        const row = actualRawRows[i];
+        if (Array.isArray(row)) {
+          const count = row.filter((cell) => cell !== null && cell !== "").length;
+          if (count > maxCells && count >= 2) {
+            maxCells = count;
+            actualHeaderRowIndex = i;
+          }
+        }
+      }
+      actualHeaders = (actualRawRows[actualHeaderRowIndex] || []).map((h) => String(h).trim());
+    } else {
+      actualRawRows = [];
+      actualHeaders = [];
+      actualHeaderRowIndex = 0;
+    }
+  }
+
+  const rowCount = actualRawRows?.length || 0;
+  headers = actualHeaders || [];
+  headerRowIndex = actualHeaderRowIndex;
+  rawRows = actualRawRows || [];
   
   // Clean up sheet row checks (exclude header row)
   const nonEmptyRows = rawRows.filter(r => r && r.some(c => c !== undefined && c !== null && String(c).trim() !== ""));
@@ -153,6 +180,28 @@ export function classifyWorksheet(workbookName, sheetName, rawRows, headerRowInd
     }
   });
 
+  // Priority override: Repeating payment columns belong to Invoices or Renewals, NOT a standalone payment entity
+  const hasInvoicePrimaryHeader = normalizedHeaders.some(h =>
+    h.includes("invoice no") || h.includes("invoice number") || h.includes("invoice date") || h.includes("bill no") || h.includes("bii no")
+  );
+  if (hasInvoicePrimaryHeader && scores.invoice > 0) {
+    bestEntity = "invoice";
+  }
+
+  const hasRenewalPrimaryHeader = normalizedHeaders.some(h =>
+    h.includes("contract no") || h.includes("con n0") || h.includes("1st service") || h.includes("exp")
+  );
+  if (hasRenewalPrimaryHeader && scores.service > 0 && !hasInvoicePrimaryHeader) {
+    bestEntity = "service";
+  }
+
+  const hasQuotationPrimaryHeader = normalizedHeaders.some(h =>
+    h.includes("qtn no") || h.includes("quotation no") || h.includes("qtn number") || h.includes("premise to be treated")
+  );
+  if (hasQuotationPrimaryHeader && (scores.quotation > 0 || normSheetName.includes("qtn") || normWb.includes("qtn")) && !hasInvoicePrimaryHeader) {
+    bestEntity = "quotation";
+  }
+
   // Calculate confidence based on maximum score and header length matches
   let confidence = 0;
   let status = "unknown";
@@ -225,6 +274,22 @@ export function classifyWorksheet(workbookName, sheetName, rawRows, headerRowInd
     status = "unknown";
   }
 
+  const normWb = normalizeString(workbookName || "");
+  let sourceProfile = "UNKNOWN";
+  if (bestEntity === "oneTimeJob") sourceProfile = "ONE_TIME_JOB";
+  else if (bestEntity === "service") sourceProfile = "AMC_PC";
+  else if (bestEntity === "invoice") {
+    const hasGstHeaders = normalizedHeaders.some((h) => h.includes("gst") || h.includes("cgst") || h.includes("sgst"));
+    if (normSheetName.includes("performa") || normWb.includes("performa")) sourceProfile = "PERFORMA_BILL";
+    else if (normSheetName.includes("gst") || normWb.includes("gst") || hasGstHeaders) sourceProfile = "GST_ALL_INVOICE";
+    else sourceProfile = "INVOICE_PC";
+  } else if (bestEntity === "quotation") {
+    if (normSheetName.includes("att") || normWb.includes("att")) sourceProfile = "ATT_QTN_LIST";
+    else sourceProfile = "QTN_PC";
+  } else if (bestEntity === "salary") sourceProfile = "ALL_SALARY";
+  else if (bestEntity === "customer") sourceProfile = "CUSTOMER";
+  else if (bestEntity === "employee") sourceProfile = "EMPLOYEE";
+
   return {
     workbookName,
     sheetName,
@@ -233,10 +298,124 @@ export function classifyWorksheet(workbookName, sheetName, rawRows, headerRowInd
     headers,
     sampleRows,
     likelyEntity: bestEntity,
+    sourceProfile,
     confidence: Number(confidence.toFixed(2)),
     matchedSignals: Array.from(new Set(matchedSignals)),
     uncertainSignals,
     reason,
     classificationStatus: status
+  };
+}
+
+/**
+ * Resolves worksheet classification to CRM target entity
+ */
+export function resolveTargetCrmEntity(classification, workbookName, sheetName, headers) {
+  // Support string source profiles directly
+  if (typeof classification === "string") {
+    const s = classification.toUpperCase();
+    let entity = "Customer";
+    let isOutOfScope = false;
+    let reason = "";
+
+    if (s.includes("SALARY")) {
+      entity = "OUT_OF_SCOPE";
+      isOutOfScope = true;
+      reason = "Salary data is out of scope.";
+    } else if (s.includes("ONE_TIME") || s === "SERVICE") {
+      entity = "Service";
+      reason = "One time service.";
+    } else if (s.includes("AMC") || s === "RENEWAL") {
+      entity = "Renewal";
+      reason = "AMC Contract Renewal.";
+    } else if (s.includes("INVOICE") || s.includes("PERFORMA") || s.includes("GST")) {
+      entity = "Invoice";
+      reason = "Invoice / Billing.";
+    } else if (s.includes("QTN") || s.includes("QUOTATION") || s.includes("ATT")) {
+      entity = "Quotation";
+      reason = "Quotation.";
+    } else if (s.includes("EMPLOYEE")) {
+      entity = "Employee";
+      reason = "Employee.";
+    }
+
+    return {
+      crmEntity: entity,
+      isOutOfScope,
+      reason,
+      toString() {
+        return this.crmEntity;
+      },
+    };
+  }
+
+  const normWb = normalizeString(workbookName || "");
+  const normSheet = normalizeString(sheetName || "");
+  const upperHeaders = (headers || []).map((h) => String(h).trim().toUpperCase());
+
+  let crmEntity = "Customer";
+  let isOutOfScope = false;
+  let reason = "Default entity format.";
+
+  // Check out of scope salary sheets first
+  if (classification?.likelyEntity === "salary" || normWb.includes("salary") || normSheet.includes("salary")) {
+    crmEntity = "OUT_OF_SCOPE";
+    isOutOfScope = true;
+    reason = "Employee salary and paysheet records are strictly OUT OF SCOPE for CRM import.";
+  } else if (
+    classification?.likelyEntity === "quotation" ||
+    normWb.includes("qtn") ||
+    normSheet.includes("qtn") ||
+    upperHeaders.includes("QTN NO") ||
+    upperHeaders.includes("PREMISE TO BE TREATED")
+  ) {
+    crmEntity = "Quotation";
+    reason = "Identified as Quotation format.";
+  } else if (
+    classification?.likelyEntity === "invoice" ||
+    normWb.includes("invoice") ||
+    normSheet.includes("invoice") ||
+    normSheet.includes("gst") ||
+    normWb.includes("performa") ||
+    upperHeaders.includes("INVOICE NO") ||
+    upperHeaders.includes("INVOICE NUMBER") ||
+    upperHeaders.includes("INVOICE DATE") ||
+    upperHeaders.includes("BII NO") ||
+    upperHeaders.includes("BILL NO") ||
+    upperHeaders.includes("TAXABLE AMOUNT")
+  ) {
+    crmEntity = "Invoice";
+    reason = "Identified as Invoice format.";
+  } else if (
+    classification?.likelyEntity === "oneTimeJob" ||
+    normWb.includes("one time") ||
+    normSheet.includes("one time") ||
+    (upperHeaders.includes("JOB NO") && (upperHeaders.includes("TYPE OF SERVICE") || upperHeaders.includes("LOCATION OF PEST")))
+  ) {
+    crmEntity = "Service";
+    reason = "Identified as Service (One Time Job) format.";
+  } else if (
+    classification?.likelyEntity === "service" ||
+    normWb.includes("amc") ||
+    normSheet.includes("amc") ||
+    upperHeaders.includes("CONTRACT NO") ||
+    upperHeaders.includes("CON N0") ||
+    upperHeaders.includes("1ST SERVICE") ||
+    upperHeaders.includes("EXP")
+  ) {
+    crmEntity = "Renewal";
+    reason = "Identified as Contract Renewal (AMC) format.";
+  } else if (upperHeaders.includes("ROLE") && (upperHeaders.includes("JOINING DATE") || upperHeaders.includes("SALARY"))) {
+    crmEntity = "Employee";
+    reason = "Identified as Employee format.";
+  }
+
+  return {
+    crmEntity,
+    isOutOfScope,
+    reason,
+    toString() {
+      return this.crmEntity;
+    },
   };
 }

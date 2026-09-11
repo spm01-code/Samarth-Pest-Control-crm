@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { register } from "../../slices/authSlice";
 import { useNavigate, Link } from "react-router-dom";
+import VerifyEmailModal from "../../Components/VerifyEmailModal";
 
 function Register() {
   const dispatch = useDispatch();
@@ -18,6 +19,8 @@ function Register() {
     password: "",
   });
 
+  const [showOtpModal, setShowOtpModal] = useState(false);
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -33,13 +36,10 @@ function Register() {
     );
 
     if (register.fulfilled.match(result)) {
-      navigate("/verify-otp", {
-        state: {
-          email: formData.email,
-        },
-      });
+      setShowOtpModal(true);
     }
   };
+
 
   return (
     <div className="relative min-h-screen bg-slate-950 flex items-center justify-center px-4 py-8 overflow-hidden">
@@ -161,8 +161,19 @@ function Register() {
           </Link>
         </p>
       </div>
+
+      <VerifyEmailModal
+        isOpen={showOtpModal}
+        email={formData.email}
+        onClose={() => setShowOtpModal(false)}
+        onSuccess={() => {
+          setShowOtpModal(false);
+          navigate("/login");
+        }}
+      />
     </div>
   );
 }
+
 
 export default Register;

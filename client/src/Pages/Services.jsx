@@ -42,7 +42,10 @@ function Services() {
     const matchesSearch =
       (service.serviceName?.toLowerCase() || "").includes(search.toLowerCase()) ||
       (service.frequency?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (service.employee?.fullName?.toLowerCase() || "").includes(search.toLowerCase());
+      (service.employee?.fullName?.toLowerCase() || "").includes(search.toLowerCase()) ||
+      (service.operatorName?.toLowerCase() || "").includes(search.toLowerCase()) ||
+      (service.customer?.fullName?.toLowerCase() || "").includes(search.toLowerCase()) ||
+      (service.jobNo?.toLowerCase() || "").includes(search.toLowerCase());
 
     const matchesStatus =
       statusFilter === "all" ? true : service.status === statusFilter;
@@ -241,7 +244,7 @@ function Services() {
                       </td>
 
                       <td className="p-4">
-                        {service.employee?.fullName || "-"}
+                        {service.employee?.fullName || service.operatorName || "-"}
                       </td>
 
                       <td className="p-4">

@@ -46,6 +46,11 @@ const quotationSchema = new mongoose.Schema(
           type: Number,
           required: true,
         },
+
+        location: {
+          type: String,
+          trim: true,
+        },
       },
     ],
 

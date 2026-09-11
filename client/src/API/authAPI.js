@@ -74,19 +74,62 @@ export const refreshAccessToken = async () => {
   return result;
 };
 
-// GET PROFILE
-export const getProfile = async (token) => {
-  const res = await fetch(`${BASE_URL}/api/admin/profile`, {
+// RESEND REGISTRATION OTP
+export const resendRegistrationOTP = async (data) => {
+  const res = await fetch(`${BASE_URL}/api/admin/resend-otp`, {
+    method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
     },
+    body: JSON.stringify(data),
   });
 
   const result = await res.json();
 
   if (!res.ok) {
-    throw new Error(result.message || "Failed to fetch profile");
+    throw new Error(result.message || "Failed to resend OTP");
   }
 
   return result;
 };
+
+// REQUEST PASSWORD CHANGE OTP
+export const requestPasswordChangeOTP = async (data, token) => {
+  const res = await fetch(`${BASE_URL}/api/admin/change-password/request-otp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  const result = await res.json();
+
+  if (!res.ok) {
+    throw new Error(result.message || "Failed to request password change code");
+  }
+
+  return result;
+};
+
+// VERIFY PASSWORD CHANGE
+export const verifyPasswordChangeAPI = async (data, token) => {
+  const res = await fetch(`${BASE_URL}/api/admin/change-password/verify`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(data),
+  });
+
+  const result = await res.json();
+
+  if (!res.ok) {
+    throw new Error(result.message || "Failed to verify password change");
+  }
+
+  return result;
+};
+

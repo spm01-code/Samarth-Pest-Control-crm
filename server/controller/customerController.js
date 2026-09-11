@@ -23,7 +23,22 @@ export const createCustomer = async (req, res) => {
 // Get All Customers
 export const getAllCustomers = async (req, res) => {
   try {
-    const customers = await Customer.find();
+    const { search } = req.query;
+    let query = {};
+
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), "i");
+      query = {
+        $or: [
+          { fullName: searchRegex },
+          { phone: searchRegex },
+          { alternatePhone: searchRegex },
+          { companyName: searchRegex },
+        ],
+      };
+    }
+
+    const customers = await Customer.find(query);
 
     res.status(200).json(customers);
 

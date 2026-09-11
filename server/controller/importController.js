@@ -10,6 +10,7 @@ import Invoice from "../model/invoiceModel.js";
 import Quotation from "../model/quotationModel.js";
 import ImportSession from "../model/importSessionModel.js";
 import { calculateServiceDates } from "../utils/serviceDateCalculator.js";
+import { classifyWorksheet, resolveTargetCrmEntity } from "../utils/importClassifier.js";
 
 // Helper: Normalize String for Matching
 const normalizeStr = (str) => {
@@ -24,18 +25,40 @@ const normalizeStr = (str) => {
 export const extractPrimaryName = (fullName) => {
   if (!fullName) return "";
   const str = String(fullName).trim();
-  const parts = str.split(/[,–\-\(\n]/);
-  return parts[0].trim();
+  if (str.includes("\n")) return str.split("\n")[0].trim();
+
+  // Multi-space after comma delimiter
+  const commaMultiSpace = str.match(/^(.*?),\s{2,}(.*)$/s);
+  if (commaMultiSpace) return commaMultiSpace[1].trim();
+
+  // Explicit corporate suffix followed by comma
+  const compMatch = str.match(/^(.*?(?:pvt\.?\s*ltd\.?|limited|llp|chs|chsl|co-?op\s*(?:hsg\s*)?soc(?:iety)?(?:\s*ltd)?|inc\.?|corporation))\s*,\s*(.*)$/i);
+  if (compMatch) return compMatch[1].trim();
+
+  // Comma followed by address indicator
+  const addrPrefix = str.match(/^(.*?),\s*(?=(?:flat|bldg|building|plot|sector|shop|room|gala|no\.|h\.?\s*no|near|opp|behind|at|cst|lbs|s\.?\s*t\.?|d\/|c\/|a\/|b\/|kamdhenu|ocean|panchasara|[0-9#])\b)/i);
+  if (addrPrefix) return addrPrefix[1].trim();
+
+  return str;
 };
 
-// Helper: Extract embedded address if full string contains comma or dash
+// Helper: Extract embedded address if full string contains comma or newline
 export const extractEmbeddedAddress = (fullName) => {
   if (!fullName) return "";
   const str = String(fullName).trim();
-  const parts = str.split(/[,–\-\n]/);
-  if (parts.length > 1) {
-    return parts.slice(1).map(p => p.trim()).filter(Boolean).join(", ");
+  if (str.includes("\n")) {
+    const lines = str.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length > 1) return lines.slice(1).join(", ");
   }
+  const commaMultiSpace = str.match(/^(.*?),\s{2,}(.*)$/s);
+  if (commaMultiSpace && commaMultiSpace[2].trim()) return commaMultiSpace[2].trim();
+
+  const compMatch = str.match(/^(.*?(?:pvt\.?\s*ltd\.?|limited|llp|chs|chsl|co-?op\s*(?:hsg\s*)?soc(?:iety)?(?:\s*ltd)?|inc\.?|corporation))\s*,\s*(.*)$/i);
+  if (compMatch && compMatch[2].trim()) return compMatch[2].trim();
+
+  const addrPrefix = str.match(/^(.*?),\s*((?:flat|bldg|building|plot|sector|shop|room|gala|no\.|h\.?\s*no|near|opp|behind|at|cst|lbs|s\.?\s*t\.?|d\/|c\/|a\/|b\/|kamdhenu|ocean|panchasara|[0-9#]).*)$/i);
+  if (addrPrefix && addrPrefix[2].trim()) return addrPrefix[2].trim();
+
   return "";
 };
 
@@ -113,30 +136,76 @@ export const findMatchingCustomer = (candidateName, candidatePhone, candidateGst
   return prefixMatch || null;
 };
 
-// Helper: Parse Date Safely
-const parseExcelDate = (val) => {
+// Helper: Parse Date Safely (including MMM--YY, Excel serials, DD/MM/YYYY)
+export const parseExcelDate = (val) => {
   if (!val) return null;
-  if (val instanceof Date) return val;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
   if (typeof val === "number") {
     // Excel serial number
     const date = new Date(Math.round((val - 25569) * 86400 * 1000));
     return isNaN(date.getTime()) ? null : date;
   }
   if (typeof val === "string") {
-    const d = new Date(val);
-    if (!isNaN(d.getTime())) return d;
-    // Try DD/MM/YYYY or DD-MM-YYYY
-    const parts = val.split(/[\/\-\.]/);
-    if (parts.length === 3) {
+    const s = val.trim();
+    if (!s) return null;
+
+    // Check for Month-Year format like "SEP--26", "AUG--25", "OCT--26", "JAN--27", "FEB-26", "JUL--26"
+    const monthYearMatch = s.match(/^([a-zA-Z]{3,})[\s\-]+(\d{2,4})$/);
+    if (monthYearMatch) {
+      const monthStr = monthYearMatch[1].toUpperCase();
+      const yearVal = parseInt(monthYearMatch[2], 10);
+      const fullYear = yearVal < 100 ? 2000 + yearVal : yearVal;
+      const monthMap = {
+        JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
+        JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11
+      };
+      const monthIdx = monthMap[monthStr.substring(0, 3)];
+      if (monthIdx !== undefined) {
+        // Contract expiry / renewal date: use the last day of that month in UTC
+        const lastDay = new Date(Date.UTC(fullYear, monthIdx + 1, 0)).getUTCDate();
+        return new Date(Date.UTC(fullYear, monthIdx, lastDay));
+      }
+    }
+
+    // Try DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+    const parts = s.split(/[\/\-\.]/);
+    if (parts.length === 3 && parts.every((p) => /^\d+$/.test(p.trim()))) {
       const day = parseInt(parts[0], 10);
       const month = parseInt(parts[1], 10) - 1;
       const year = parseInt(parts[2], 10);
       const fullYear = year < 100 ? 2000 + year : year;
-      const d2 = new Date(fullYear, month, day);
-      if (!isNaN(d2.getTime())) return d2;
+      if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+        const d = new Date(Date.UTC(fullYear, month, day));
+        if (!isNaN(d.getTime())) return d;
+      }
     }
+
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
   }
   return null;
+};
+
+// Helper: Parse Excel Time Safely (converts decimal day fractions e.g. 0.708333 to "05:00 PM")
+export const parseExcelTime = (val) => {
+  if (val === undefined || val === null || val === "") return "";
+  if (typeof val === "number") {
+    if (val >= 0 && val < 1) {
+      const totalSeconds = Math.round(val * 86400);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const ampm = hours >= 12 ? "PM" : "AM";
+      const displayHours = hours % 12 || 12;
+      const displayMinutes = String(minutes).padStart(2, "0");
+      return `${String(displayHours).padStart(2, "0")}:${displayMinutes} ${ampm}`;
+    }
+  }
+  const s = String(val).trim();
+  const num = parseFloat(s);
+  if (!isNaN(num) && num > 0 && num < 1 && /^\d*\.?\d+$/.test(s)) {
+    return parseExcelTime(num);
+  }
+  return s;
 };
 
 // ============================================================
@@ -148,10 +217,10 @@ const parseExcelDate = (val) => {
 const UPDATE_WHITELISTS = {
   Customer: ["fullName", "email", "address", "contactPerson", "gstNumber", "companyName", "customerType", "alternatePhone"],
   Employee: ["fullName", "email", "address", "role", "salary", "joiningDate"],
-  Service: ["jobNo", "serviceName", "serviceDate", "serviceTime", "address", "amount", "area", "locationOfPest", "reference", "clientReference", "frequency"],
-  Invoice: ["invoiceDate", "premisesTreated", "treatmentType", "hsnCode", "subtotal", "totalAmount", "gstNumber", "tds", "rtn", "gstFile"],
-  Quotation: ["quotationDate", "premises", "billingTerm", "totalAmount"],
-  Renewal: ["paymentTerm", "contractEndDate"],
+  Service: ["jobNo", "serviceName", "serviceDate", "serviceTime", "address", "amount", "area", "locationOfPest", "reference", "clientReference", "frequency", "contactPerson", "contactNumber", "remark", "paymentDetails", "operatorName"],
+  Invoice: ["invoiceDate", "premisesTreated", "treatmentType", "hsnCode", "subtotal", "totalAmount", "gstNumber", "tds", "rtn", "gstFile", "billingPeriod", "amountInWords"],
+  Quotation: ["quotationDate", "premises", "billingTerm", "totalAmount", "notes"],
+  Renewal: ["paymentTerm", "contractEndDate", "notes"],
 };
 
 function sanitizeForUpdate(entityType, rawData) {
@@ -159,7 +228,13 @@ function sanitizeForUpdate(entityType, rawData) {
   const safe = {};
   for (const key of allowed) {
     if (rawData[key] !== undefined && rawData[key] !== "") {
-      safe[key] = rawData[key];
+      const val = rawData[key];
+      // CRITICAL: Safe update protection!
+      // Never overwrite populated address with "Address not provided", "N/A", or "-"
+      if (key === "address" && (val === "Address not provided" || val === "N/A" || val === "-")) {
+        continue;
+      }
+      safe[key] = val;
     }
   }
   return safe;
@@ -296,7 +371,7 @@ function buildPaymentHistoryFromColumns(paymentColumns, paymentData, headers) {
 // columns: CGST, SGST, IGST, HSN, SAC, PARTY GST NO) to
 // determine if the worksheet represents GST or NON_GST invoices.
 // ============================================================
-function determineInvoiceType(mappings, rowData) {
+export function determineInvoiceType(mappings, rowData) {
   // If explicitly provided on the row
   if (rowData && rowData.invoiceType && ["GST", "NON_GST"].includes(String(rowData.invoiceType).toUpperCase())) {
     return String(rowData.invoiceType).toUpperCase();
@@ -385,6 +460,10 @@ const ENTITY_FIELDS = {
     { key: "reference", label: "Reference", required: false },
     { key: "clientReference", label: "Client Reference", required: false },
     { key: "frequency", label: "Service Frequency", required: false },
+    { key: "contactPerson", label: "Contact Person", required: false },
+    { key: "contactNumber", label: "Contact Number", required: false },
+    { key: "remark", label: "Remarks", required: false },
+    { key: "paymentDetails", label: "Payment Details / Mode", required: false },
   ],
   Renewal: [
     { key: "renewalNumber", label: "Job No / Contract No", required: true },
@@ -401,14 +480,15 @@ const ENTITY_FIELDS = {
     { key: "contractEndDate", label: "Contract End Date (EXP)", required: false },
     { key: "paymentTerm", label: "Billing Terms", required: false },
     { key: "contactPerson", label: "Contact Person", required: false },
+    { key: "area", label: "Premises Area", required: false },
   ],
   Invoice: [
     { key: "invoiceNumber", label: "Invoice No / Number", required: true },
     { key: "invoiceDate", label: "Invoice Date", required: true },
     { key: "customerName", label: "Party Name / Client Name", required: true },
     { key: "gstNumber", label: "Party GST No", required: false },
-    { key: "premisesTreated", label: "Site Location", required: false },
-    { key: "treatmentType", label: "Service", required: false },
+    { key: "premisesTreated", label: "Site Location / Project Address", required: false },
+    { key: "treatmentType", label: "Service / Treatment", required: false },
     { key: "hsnCode", label: "HSN Code", required: false },
     { key: "subtotal", label: "Taxable Amount", required: true },
     { key: "cgstAmount", label: "CGST Amount", required: false },
@@ -418,6 +498,8 @@ const ENTITY_FIELDS = {
     { key: "tds", label: "TDS", required: false },
     { key: "rtn", label: "RTN", required: false },
     { key: "gstFile", label: "GST File", required: false },
+    { key: "billingPeriod", label: "Billing Period", required: false },
+    { key: "amountInWords", label: "Amount in Words", required: false },
   ],
   Quotation: [
     { key: "quotationNumber", label: "Quotation No (QTN NO)", required: true },
@@ -431,6 +513,11 @@ const ENTITY_FIELDS = {
     { key: "billingTerm", label: "Billing Term", required: false },
     { key: "totalAmount", label: "Total Amount", required: false },
     { key: "contactPerson", label: "Contact Person", required: false },
+    { key: "location", label: "Location Treated", required: false },
+    { key: "area", label: "Premises Area / Specification", required: false },
+    { key: "amountInWords", label: "Amount in Words", required: false },
+    { key: "notes", label: "Notes / Remarks", required: false },
+    { key: "email", label: "Email Address", required: false },
   ],
 };
 
@@ -444,8 +531,10 @@ const PRESET_MAPPINGS = {
     "MOB. NO.": "phone",
     EMAIL: "email",
     ADDRESS: "address",
+    LOCATION: "address",
     "CLIENT NAME & ADDRESS": "address",
     "CONTACT PERSON": "contactPerson",
+    PERSON: "contactPerson",
     "GST NO": "gstNumber",
     "PARTY GST NO": "gstNumber",
     "PARTY GST NO.": "gstNumber",
@@ -474,6 +563,8 @@ const PRESET_MAPPINGS = {
     "CLIENT REFERENCE": "clientReference",
     "SERVICE FREQUENCY": "frequency",
     FREQUENCY: "frequency",
+    "CONTACT PERSON": "contactPerson",
+    REMARK: "remark",
   },
   Renewal: {
     "JOB NO": "renewalNumber",
@@ -482,6 +573,7 @@ const PRESET_MAPPINGS = {
     "CLIENT NAME": "customerName",
     "PARTY NAME": "customerName",
     "MOB NO": "customerPhone",
+    "MOBILE NO": "customerPhone",
     ADDRESS: "address",
     LOCATION: "address",
     SERVICE: "serviceName",
@@ -496,10 +588,10 @@ const PRESET_MAPPINGS = {
     "BILLING TERMS": "paymentTerm",
     "BILLING TERM": "paymentTerm",
     "CONTACT PERSON": "contactPerson",
+    AREA: "area",
   },
   Invoice: {
     "INVOICE DATE": "invoiceDate",
-    // NOTE: Bare "DATE" is NOT mapped to invoiceDate — it belongs to payment history.
     "INVOICE NO": "invoiceNumber",
     "INVOICE NUMBER": "invoiceNumber",
     "INVOICE  NO": "invoiceNumber",
@@ -514,6 +606,7 @@ const PRESET_MAPPINGS = {
     "GST NO": "gstNumber",
     "GST FILE": "gstFile",
     "GST FIL": "gstFile",
+    "GST FILED": "gstFile",
     "SITE LOCATION": "premisesTreated",
     "SITE LOCATION ": "premisesTreated",
     LOCATION: "premisesTreated",
@@ -522,7 +615,10 @@ const PRESET_MAPPINGS = {
     "PROJECT  NAME & ADDRESS": "premisesTreated",
     "PROJECT ADDRESS": "premisesTreated",
     "PROJECT NAME & ADDRESS": "premisesTreated",
-    "ADDRESS - 1": "premisesTreated",
+    "ADDRESS 1": "premisesTreated",
+    "ADDRESS - 1": "addressLine1",
+    "ADDRESS -2": "addressLine2",
+    "ADDRESS - 3": "addressLine3",
     SERVICE: "treatmentType",
     SERVICES: "treatmentType",
     TREATMENT: "treatmentType",
@@ -533,8 +629,8 @@ const PRESET_MAPPINGS = {
     "TAXABLE AMOUNT": "subtotal",
     "TAXABLE VALUE": "subtotal",
     AMOUNT: "subtotal",
-    "AMOUNT IN WORDS": "UNMAPPED",
-    "AMOUNT IN WOR": "UNMAPPED",
+    "AMOUNT IN WORDS": "amountInWords",
+    "AMOUNT IN WOR": "amountInWords",
     CHARGES: "subtotal",
     RATE: "subtotal",
     CGST: "cgstAmount",
@@ -547,11 +643,10 @@ const PRESET_MAPPINGS = {
     TOTAL: "totalAmount",
     TDS: "tds",
     RTN: "rtn",
+    "BILLING PERIOD": "billingPeriod",
+    "BILLING PER": "billingPeriod",
     // Payment columns — explicitly mark as UNMAPPED so they flow to paymentData
     "IVED AN": "UNMAPPED",
-    "SERVICE DATE": "UNMAPPED",
-    "BILLING PERIOD": "UNMAPPED",
-    "BILLING PER": "UNMAPPED",
   },
   Quotation: {
     "QTN NO": "quotationNumber",
@@ -564,6 +659,8 @@ const PRESET_MAPPINGS = {
     "MOB. NO.": "customerPhone",
     "PREMISE TO BE TREATED": "premises",
     "PROJECT NAME & ADDRESS": "premises",
+    "LOCATION TREATED": "location",
+    AREA: "area",
     "SERVICE NAME": "serviceName",
     SERVICE: "serviceName",
     FREQUENCY: "frequency",
@@ -572,8 +669,11 @@ const PRESET_MAPPINGS = {
     "BILLING TERM": "billingTerm",
     "TOTAL AMOUNT": "totalAmount",
     TOTAL: "totalAmount",
+    "AMOUNT IN WORDS": "amountInWords",
     "CONTACT PERSON": "contactPerson",
     PERSON: "contactPerson",
+    EMAIL: "email",
+    REMARK: "notes",
   },
 };
 
@@ -639,79 +739,130 @@ export const selectSheet = async (req, res) => {
       return res.status(404).json({ message: "Import session not found" });
     }
 
+    const targetSheetName = selectedSheet || session.selectedSheet;
     const workbook = XLSX.readFile(session.filePath);
-    const sheet = workbook.Sheets[selectedSheet || session.selectedSheet];
+    const sheet = workbook.Sheets[targetSheetName];
     if (!sheet) {
       return res.status(400).json({ message: "Selected worksheet not found" });
     }
 
+    // Try intelligent classification first
+    const sheetClassification = classifyWorksheet(workbook, targetSheetName);
+
     const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-    // Find header row (first non-empty array with string values)
+    // Find header row (use classifier index if valid, else search first non-empty array)
     let headerRowIndex = 0;
-    for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
-      const row = rawRows[i];
-      if (Array.isArray(row) && row.filter((cell) => cell !== null && cell !== "").length >= 2) {
-        headerRowIndex = i;
-        break;
+    if (sheetClassification && sheetClassification.headerRowIndex >= 0 && sheetClassification.headerRowIndex < rawRows.length) {
+      headerRowIndex = sheetClassification.headerRowIndex;
+    } else {
+      for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
+        const row = rawRows[i];
+        if (Array.isArray(row) && row.filter((cell) => cell !== null && cell !== "").length >= 2) {
+          headerRowIndex = i;
+          break;
+        }
       }
     }
 
     const headers = (rawRows[headerRowIndex] || []).map((h) => String(h).trim());
     const sampleRows = rawRows.slice(headerRowIndex + 1, headerRowIndex + 6);
 
-    // Auto-detect Target Entity Type based on headers
+    // Auto-detect Target Entity Type based on classification or headers
     let detectedEntity = "Customer";
-    const upperHeaders = headers.map((h) => h.toUpperCase());
+    const resolvedFromProfile = sheetClassification ? resolveTargetCrmEntity(sheetClassification.sourceProfile) : null;
 
-    if (upperHeaders.includes("JOB NO") && upperHeaders.includes("TYPE OF SERVICE")) {
-      detectedEntity = "Service";
-    } else if (upperHeaders.includes("CONTRACT NO") || upperHeaders.includes("1ST SERVICE")) {
-      detectedEntity = "Renewal";
-    } else if (upperHeaders.includes("INVOICE NO") || upperHeaders.includes("INVOICE NUMBER") || upperHeaders.includes("INVOICE DATE") || upperHeaders.includes("BII NO") || upperHeaders.includes("BILL NO")) {
-      detectedEntity = "Invoice";
-    } else if (upperHeaders.includes("QTN NO") || upperHeaders.includes("PREMISE TO BE TREATED")) {
-      detectedEntity = "Quotation";
-    } else if (upperHeaders.includes("ROLE") && upperHeaders.includes("SALARY")) {
-      detectedEntity = "Employee";
+    if (resolvedFromProfile && resolvedFromProfile !== "OUT_OF_SCOPE") {
+      detectedEntity = resolvedFromProfile;
+    } else {
+      const upperHeaders = headers.map((h) => h.toUpperCase());
+      if (upperHeaders.includes("JOB NO") && upperHeaders.includes("TYPE OF SERVICE")) {
+        detectedEntity = "Service";
+      } else if (upperHeaders.includes("CONTRACT NO") || upperHeaders.includes("1ST SERVICE") || upperHeaders.includes("CON N0")) {
+        detectedEntity = "Renewal";
+      } else if (
+        upperHeaders.includes("INVOICE NO") ||
+        upperHeaders.includes("INVOICE NUMBER") ||
+        upperHeaders.includes("INVOICE DATE") ||
+        upperHeaders.includes("BII NO") ||
+        upperHeaders.includes("BILL NO")
+      ) {
+        detectedEntity = "Invoice";
+      } else if (upperHeaders.includes("QTN NO") || upperHeaders.includes("PREMISE TO BE TREATED")) {
+        detectedEntity = "Quotation";
+      } else if (upperHeaders.includes("ROLE") && upperHeaders.includes("SALARY")) {
+        detectedEntity = "Employee";
+      }
     }
 
-    // Auto-generate default mappings for detected entity
+    // Prepare columns metadata
+    const columns = headers.map((header, colIdx) => ({
+      colIdx,
+      header,
+      columnKey: `col_${colIdx}_${header}`,
+    }));
+
+    // Auto-generate non-colliding default mappings for detected entity
     const preset = PRESET_MAPPINGS[detectedEntity] || {};
     const defaultMappings = {};
-    headers.forEach((header) => {
+    const mappedTargetFields = new Set();
+
+    const hasExplicitAddressCol = headers.some(
+      (h) => h.trim().toUpperCase() === "ADDRESS" || h.trim().toUpperCase().includes("CLIENT NAME & ADDRESS")
+    );
+
+    headers.forEach((header, colIdx) => {
+      const columnKey = `col_${colIdx}_${header}`;
       const cleanH = header.trim();
       const normH = cleanH.toUpperCase();
-      // Check preset match
-      if (preset[cleanH]) {
-        defaultMappings[cleanH] = preset[cleanH];
-      } else if (preset[normH]) {
-        defaultMappings[cleanH] = preset[normH];
+      let targetField = "UNMAPPED";
+
+      // Intelligent anti-collision: If ADDRESS column exists, do not map LOCATION to address!
+      if ((normH === "LOCATION" || normH === "LOCATION OF PEST") && hasExplicitAddressCol) {
+        if (detectedEntity === "Service") targetField = "locationOfPest";
+        else if (detectedEntity === "Invoice") targetField = "premisesTreated";
+        else if (detectedEntity === "Quotation") targetField = "location";
+        else targetField = "UNMAPPED";
+      } else if (preset[cleanH] && !mappedTargetFields.has(preset[cleanH])) {
+        targetField = preset[cleanH];
+      } else if (preset[normH] && !mappedTargetFields.has(preset[normH])) {
+        targetField = preset[normH];
       } else {
         // Fallback: match by normalized field label
-        const fields = ENTITY_FIELDS[detectedEntity];
+        const fields = ENTITY_FIELDS[detectedEntity] || [];
         const match = fields.find(
-          (f) => normalizeStr(f.label) === normalizeStr(cleanH) || normalizeStr(f.key) === normalizeStr(cleanH)
+          (f) =>
+            !mappedTargetFields.has(f.key) &&
+            (normalizeStr(f.label) === normalizeStr(cleanH) || normalizeStr(f.key) === normalizeStr(cleanH))
         );
         if (match) {
-          defaultMappings[cleanH] = match.key;
-        } else {
-          defaultMappings[cleanH] = "UNMAPPED";
+          targetField = match.key;
         }
+      }
+
+      if (targetField !== "UNMAPPED") {
+        mappedTargetFields.add(targetField);
+      }
+
+      defaultMappings[columnKey] = targetField;
+      if (!defaultMappings[cleanH] || defaultMappings[cleanH] === "UNMAPPED") {
+        defaultMappings[cleanH] = targetField;
       }
     });
 
-    session.selectedSheet = selectedSheet;
+    session.selectedSheet = targetSheetName;
     session.targetEntity = detectedEntity;
     await session.save();
 
     res.status(200).json({
       importSessionId,
-      selectedSheet,
+      selectedSheet: targetSheetName,
       headers,
+      columns,
       sampleRows,
       detectedEntity,
       defaultMappings,
+      classification: sheetClassification,
       availableEntities: Object.keys(ENTITY_FIELDS),
       entityFields: ENTITY_FIELDS,
     });
@@ -770,25 +921,37 @@ export const validateSession = async (req, res) => {
 
     const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
-    // Locate header row
+    // Locate header row (row with maximum filled columns in first 10 rows)
     let headerRowIndex = 0;
+    let maxCols = 0;
     for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
       const row = rawRows[i];
-      if (Array.isArray(row) && row.filter((cell) => cell !== null && cell !== "").length >= 2) {
-        headerRowIndex = i;
-        break;
+      if (Array.isArray(row)) {
+        const count = row.filter((cell) => cell !== null && cell !== "").length;
+        if (count > maxCols && count >= 2) {
+          maxCols = count;
+          headerRowIndex = i;
+        }
       }
     }
 
     const headers = (rawRows[headerRowIndex] || []).map((h) => String(h).trim());
     const dataRows = rawRows.slice(headerRowIndex + 1);
 
+    // Helper to resolve fieldKey for a column by columnKey, colIdx, or header
+    const getMappingForCol = (header, colIdx) => {
+      if (mappings[`col_${colIdx}_${header}`]) return mappings[`col_${colIdx}_${header}`];
+      if (mappings[colIdx] !== undefined && mappings[colIdx] !== null) return mappings[colIdx];
+      if (mappings[header]) return mappings[header];
+      return "UNMAPPED";
+    };
+
     // Identify Unmapped and Payment Headers
     const unmappedHeaders = [];
     const paymentHeaders = [];
 
-    headers.forEach((header) => {
-      const fieldKey = mappings[header];
+    headers.forEach((header, colIdx) => {
+      const fieldKey = getMappingForCol(header, colIdx);
       if (!fieldKey || fieldKey === "UNMAPPED") {
         unmappedHeaders.push(header);
         const normH = header.toUpperCase();
@@ -798,6 +961,58 @@ export const validateSession = async (req, res) => {
           paymentHeaders.push(header);
         }
       }
+    });
+
+    // Generate Field-Level Data Loss & Reconciliation Report
+    const reconciliationReport = headers.map((header, colIdx) => {
+      const fieldKey = getMappingForCol(header, colIdx);
+      const nonNullValues = [];
+      dataRows.forEach((r) => {
+        const v = r[colIdx] !== undefined ? String(r[colIdx]).trim() : "";
+        if (v && v !== "N/A" && v !== "-" && v !== "null") {
+          nonNullValues.push(v);
+        }
+      });
+
+      const totalValues = nonNullValues.length;
+      const sampleValues = Array.from(new Set(nonNullValues)).slice(0, 3);
+      const normH = header.toUpperCase();
+
+      let status = "PASS";
+      let riskReason = "";
+
+      if (fieldKey && fieldKey !== "UNMAPPED") {
+        status = "PASS";
+      } else if (totalValues === 0) {
+        status = "INFO";
+        riskReason = "Empty column across all rows. Safe to omit.";
+      } else if (/^(SR|SR\.|SR\.?\s*NO|NO\.?|SIGN|SIGNATURE)$/i.test(header.trim())) {
+        status = "INFO";
+        riskReason = "Metadata / row index / physical signature mark. Managed natively by CRM.";
+      } else if (PAYMENT_KEYWORDS.some((kw) => normH.includes(kw))) {
+        status = "PASS";
+        riskReason = "Preserved in paymentHistory ledger.";
+      } else {
+        const isHighRisk = /amount|charges|rate|tax|date|exp|contact|phone|mobile|address|email|treat|service/i.test(header);
+        if (isHighRisk) {
+          status = "DATA_LOSS_RISK";
+          riskReason = `Contains ${totalValues} business values but marked Unmapped. Consider mapping to preserve data.`;
+        } else {
+          status = "WARNING";
+          riskReason = `Unmapped column with ${totalValues} non-empty values.`;
+        }
+      }
+
+      return {
+        colIdx,
+        header,
+        columnKey: `col_${colIdx}_${header}`,
+        targetField: fieldKey || "UNMAPPED",
+        totalValues,
+        sampleValues,
+        status,
+        riskReason,
+      };
     });
 
     // Load Database Records for Exact Matching & Duplicate Protection
@@ -859,10 +1074,27 @@ export const validateSession = async (req, res) => {
 
       headers.forEach((header, colIdx) => {
         const val = rowArray[colIdx] !== undefined ? String(rowArray[colIdx]).trim() : "";
-        const fieldKey = mappings[header];
+        const fieldKey = getMappingForCol(header, colIdx);
 
         if (fieldKey && fieldKey !== "UNMAPPED") {
-          rowObj[fieldKey] = val;
+          // Empty-overwrite protection & address precedence:
+          if (rowObj[fieldKey]) {
+            if (!val) {
+              // Do not overwrite non-empty with empty!
+            } else if (fieldKey === "address") {
+              const currentIsStreet = /flat|bldg|building|plot|sector|shop|room|gala|road|chambers|soc|chs|lane/i.test(rowObj[fieldKey]);
+              const newIsStreet = /flat|bldg|building|plot|sector|shop|room|gala|road|chambers|soc|chs|lane/i.test(val);
+              if (newIsStreet && !currentIsStreet) {
+                rowObj[fieldKey] = val;
+              } else if (!currentIsStreet && !newIsStreet && val.length > rowObj[fieldKey].length) {
+                rowObj[fieldKey] = val;
+              }
+            } else {
+              rowObj[fieldKey] = val;
+            }
+          } else {
+            rowObj[fieldKey] = val;
+          }
         } else {
           unmappedData[header] = val;
           const normH = header.toUpperCase();
@@ -890,7 +1122,21 @@ export const validateSession = async (req, res) => {
       const custPhone = rowObj.customerPhone || rowObj.phone || "";
       const custGst = rowObj.gstNumber || "";
       const custName = rowObj.customerName || rowObj.fullName || "";
-      const custAddr = rowObj.address || extractEmbeddedAddress(custName) || "";
+      let custAddr = rowObj.address || "";
+      if (!custAddr && custName) {
+        custAddr = extractEmbeddedAddress(custName);
+        if (custAddr) rowObj.address = custAddr;
+      }
+      if (!custAddr) {
+        for (const [colH, colV] of Object.entries(unmappedData)) {
+          const normH = colH.toUpperCase();
+          if ((normH.includes("ADDRESS") || normH.includes("LOCATION")) && colV && colV !== "N/A") {
+            custAddr = colV;
+            rowObj.address = custAddr;
+            break;
+          }
+        }
+      }
 
       matchedCustomer = findMatchingCustomer(custName, custPhone, custGst, custAddr, existingCustomers);
 
@@ -1028,6 +1274,7 @@ export const validateSession = async (req, res) => {
       },
       unmappedHeaders,
       paymentHeaders,
+      reconciliationReport,
       rows: validatedRows,
     };
     session.status = "validated";
@@ -1039,6 +1286,7 @@ export const validateSession = async (req, res) => {
       summary: session.validationResults.summary,
       unmappedHeaders,
       paymentHeaders,
+      reconciliationReport,
       rows: validatedRows,
     });
   } catch (error) {
@@ -1132,10 +1380,16 @@ export const commitSession = async (req, res) => {
                   if (existingCust) {
                     // Customer already exists — link to existing ID
                     customerId = existingCust._id.toString();
+                    // Safe address enrichment: if customer currently has placeholder address, enrich with genuine street address
+                    const isPlaceholder = !existingCust.address || existingCust.address === "Address not provided" || existingCust.address === "N/A";
+                    if (isPlaceholder && addrToUse && addrToUse !== "Address not provided" && addrToUse !== "N/A") {
+                      await Customer.findByIdAndUpdate(existingCust._id, { address: addrToUse });
+                      existingCust.address = addrToUse;
+                    }
                   } else if (custAction !== "SKIP") {
                     const custData = {
                       fullName: primaryName || nameToUse,
-                      address: addrToUse,
+                      address: addrToUse || "N/A",
                       email: rowData.email || "",
                       contactPerson: rowData.contactPerson || "",
                       gstNumber: rowData.gstNumber || "",
@@ -1250,14 +1504,19 @@ export const commitSession = async (req, res) => {
                 serviceDate: serviceDateVal,
                 nextServiceDate: calcNext,
                 upcomingServiceDates: calcUpcoming,
-                serviceTime: rowData.serviceTime || "",
+                serviceTime: parseExcelTime(rowData.serviceTime) || rowData.serviceTime || "",
                 address: rowData.address || "N/A",
                 amount: parseFloat(rowData.amount) || 0,
+                operatorName: rowData.operatorName || (row.matchedEmployee ? row.matchedEmployee.fullName : ""),
                 area: rowData.area || "",
                 locationOfPest: rowData.locationOfPest || "",
                 reference: rowData.reference || "",
                 clientReference: rowData.clientReference || "",
                 frequency: validFreq,
+                contactPerson: rowData.contactPerson || "",
+                contactNumber: rowData.contactNumber || "",
+                remark: rowData.remark || "",
+                paymentDetails: rowData.paymentDetails || "",
                 status: "active",
               });
               await newService.save();
@@ -1328,6 +1587,8 @@ export const commitSession = async (req, res) => {
                 invoiceDate: parseExcelDate(rowData.invoiceDate) || new Date(),
                 invoiceType,
                 customer: customerId,
+                billingPeriod: rowData.billingPeriod || "",
+                amountInWords: rowData.amountInWords || "",
                 premisesTreated: rowData.premisesTreated || "",
                 treatmentType: rowData.treatmentType || "",
                 hsnCode: rowData.hsnCode || "",
@@ -1384,8 +1645,10 @@ export const commitSession = async (req, res) => {
               seenQuotationNumbers.add(normQtnNo);
 
               const cost = parseFloat(rowData.cost) || parseFloat(rowData.totalAmount) || 0;
+              const qtnType = session.selectedSheet?.toUpperCase().includes("ATT") || qtnNo.toUpperCase().includes("ATT") ? "ATT" : "PC";
               const newQtn = new Quotation({
                 quotationNumber: qtnNo,
+                quotationType: qtnType,
                 quotationDate: parseExcelDate(rowData.quotationDate) || new Date(),
                 customer: customerId,
                 premises: rowData.premises || rowData.address || "Client Premises",
@@ -1394,8 +1657,11 @@ export const commitSession = async (req, res) => {
                     serviceName: rowData.serviceName || "Pest Control",
                     frequency: rowData.frequency || "Monthly",
                     cost,
+                    location: rowData.location || "",
                   },
                 ],
+                specification: rowData.area || "",
+                notes: rowData.notes || "",
                 billingTerm: rowData.billingTerm || "Monthly",
                 totalAmount: parseFloat(rowData.totalAmount) || cost,
                 status: "Draft",
@@ -1443,6 +1709,13 @@ export const commitSession = async (req, res) => {
               if (rowData.thirdService) serviceVisits.push({ visitLabel: "3RD SERVICE", visitDateStr: rowData.thirdService });
               if (rowData.fourthService) serviceVisits.push({ visitLabel: "4TH SERVICE", visitDateStr: rowData.fourthService });
 
+              // Extract payment history from repeating payment columns if present
+              const { entries: renewalPaymentEntries } = buildPaymentHistoryFromColumns(
+                row.paymentColumns,
+                row.paymentData || {},
+                session.validationResults?.paymentHeaders || []
+              );
+
               const charges = parseFloat(rowData.charges) || 0;
               const newRenewal = new Renewal({
                 renewalNumber: renewalNo,
@@ -1460,6 +1733,7 @@ export const commitSession = async (req, res) => {
                 paymentTerm: rowData.paymentTerm || "ANNUM",
                 subtotal: charges,
                 totalAmount: charges,
+                paymentHistory: renewalPaymentEntries || [],
                 status: "Draft",
               });
               await newRenewal.save();
@@ -1486,6 +1760,8 @@ export const commitSession = async (req, res) => {
                   nextServiceDate: parseExcelDate(rowData.secondService) || undefined,
                   address: rowData.address || "N/A",
                   amount: charges,
+                  area: rowData.area || "",
+                  operatorName: rowData.operatorName || "",
                   frequency: validFreq,
                   status: "active",
                 });

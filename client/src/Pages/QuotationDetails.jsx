@@ -120,7 +120,7 @@ function QuotationDetails() {
         (service, index) => `
           <tr>
             <td class="serial">${index + 1}</td>
-            <td>${safeText(quotation.premises)}</td>
+            <td>${safeText(service.location || service.address || quotation.premises || customerAddress)}</td>
             <td class="center service-name">${safeText(service.serviceName)}</td>
             <td class="center">${safeText(service.frequency)}</td>
             <td class="center">Rs. ${formatAmount(service.cost)}<br>(Per Service)</td>
@@ -946,6 +946,7 @@ ${safeText(customerAddress)}</strong>
                   <tr>
                     <th className="p-4 font-medium">#</th>
                     <th className="p-4 font-medium">Service</th>
+                    <th className="p-4 font-medium">Location</th>
                     <th className="p-4 font-medium">Frequency</th>
                     <th className="p-4 text-right font-medium">Cost</th>
                   </tr>
@@ -960,6 +961,9 @@ ${safeText(customerAddress)}</strong>
                       <td className="p-4 font-medium">
                         {service.serviceName}
                       </td>
+                      <td className="p-4 text-sm text-gray-600">
+                        {service.location || service.address || quotation.premises || "-"}
+                      </td>
                       <td className="p-4">{service.frequency}</td>
                       <td className="p-4 text-right font-medium">
                         ₹{formatAmount(service.cost)}
@@ -970,7 +974,7 @@ ${safeText(customerAddress)}</strong>
                 <tfoot className="border-t-2 bg-slate-50">
                   <tr>
                     <td
-                      colSpan="3"
+                      colSpan="4"
                       className="p-4 text-right font-semibold"
                     >
                       Total

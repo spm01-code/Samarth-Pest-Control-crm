@@ -17,6 +17,7 @@ function InvoicePage() {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("All");
+  const [invoiceTypeFilter, setInvoiceTypeFilter] = useState("All");
   const [search, setSearch] = useState("");
 
   const { invoices, loading, error } = useSelector(
@@ -33,12 +34,21 @@ function InvoicePage() {
     const matchesStatus =
       statusFilter === "All" ? true : invoice.paymentStatus === statusFilter;
 
+    const matchesType =
+      invoiceTypeFilter === "All"
+        ? true
+        : invoiceTypeFilter === "GST"
+        ? invoice.invoiceType === "GST"
+        : invoice.invoiceType === "NON_GST";
+
     const matchesSearch =
       (invoice.invoiceNumber?.toLowerCase() || "").includes(search.toLowerCase()) ||
       (invoice.workOrderNumber?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (invoice.customer?.fullName?.toLowerCase() || "").includes(search.toLowerCase());
+      (invoice.customer?.fullName?.toLowerCase() || "").includes(search.toLowerCase()) ||
+      (invoice.customer?.phone || "").includes(search) ||
+      (invoice.customer?.alternatePhone || "").includes(search);
 
-    return matchesStatus && matchesSearch;
+    return matchesStatus && matchesType && matchesSearch;
   });
 
   const handleDelete = async (id) => {
@@ -68,6 +78,16 @@ function InvoicePage() {
 
     return invoiceList.filter((invoice) => {
       return invoice.paymentStatus === status;
+    }).length;
+  };
+
+  const getTypeCount = (type) => {
+    if (type === "All") {
+      return invoiceList.length;
+    }
+
+    return invoiceList.filter((invoice) => {
+      return invoice.invoiceType === type;
     }).length;
   };
 
@@ -114,6 +134,28 @@ function InvoicePage() {
         >
           <FaPlus />Create Invoice
         </button>
+      </div>
+
+      {/* Invoice Type Filter Row */}
+      <div className="bg-white rounded-xl shadow-sm p-4 mb-4 flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-slate-700 mr-2">Invoice Type:</span>
+        {[
+          { label: "All", value: "All" },
+          { label: "GST", value: "GST" },
+          { label: "Non GST", value: "NON_GST" },
+        ].map(({ label, value }) => (
+          <button
+            key={value}
+            onClick={() => setInvoiceTypeFilter(value)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+              invoiceTypeFilter === value
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+            }`}
+          >
+            {label} ({getTypeCount(value)})
+          </button>
+        ))}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">

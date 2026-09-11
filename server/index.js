@@ -23,8 +23,10 @@ const PORT = process.env.PORT || 8000;
 // Middlewares
 // CORS
 const allowedOrigins = [
-  "https://samarth-pest-control-crm.vercel.app",
-  "http://localhost:5173",
+'https://spmdashboard.cloud',
+  'https://www.spmdashboard.cloud',
+  'http://localhost:5173',
+  'http://localhost:3000'
 ];
 
 app.use(

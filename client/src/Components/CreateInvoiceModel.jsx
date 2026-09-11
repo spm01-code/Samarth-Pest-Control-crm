@@ -33,6 +33,8 @@ function CreateInvoiceModal({
     gstNumber: "",
     particulars:
       "Being Charges for pest management service rendered as details mentioned below.",
+    billingPeriod: "",
+    contractPeriod: "",
     premisesTreated: "",
     treatmentType: "",
     hsnCode: "",
@@ -268,17 +270,25 @@ function CreateInvoiceModal({
 
             {showCustomers && customerSearch.trim() !== "" && (
               <div className="absolute z-50 w-full bg-white border rounded-xl mt-1 max-h-52 overflow-y-auto shadow-lg">
-                {customers?.filter((customer) =>
-                  customer.fullName
-                    .toLowerCase()
-                    .includes(customerSearch.toLowerCase()),
-                ).length > 0 ? (
+                {customers?.filter((customer) => {
+                  const q = customerSearch.toLowerCase().trim();
+                  return (
+                    (customer.fullName?.toLowerCase() || "").includes(q) ||
+                    (customer.phone?.toLowerCase() || "").includes(q) ||
+                    (customer.alternatePhone?.toLowerCase() || "").includes(q) ||
+                    (customer.companyName?.toLowerCase() || "").includes(q)
+                  );
+                }).length > 0 ? (
                   customers
-                    .filter((customer) =>
-                      customer.fullName
-                        .toLowerCase()
-                        .includes(customerSearch.toLowerCase()),
-                    )
+                    .filter((customer) => {
+                      const q = customerSearch.toLowerCase().trim();
+                      return (
+                        (customer.fullName?.toLowerCase() || "").includes(q) ||
+                        (customer.phone?.toLowerCase() || "").includes(q) ||
+                        (customer.alternatePhone?.toLowerCase() || "").includes(q) ||
+                        (customer.companyName?.toLowerCase() || "").includes(q)
+                      );
+                    })
                     .map((customer) => (
                       <div
                         key={customer._id}
@@ -296,7 +306,7 @@ function CreateInvoiceModal({
                         <div className="font-medium">{customer.fullName}</div>
 
                         <div className="text-sm text-gray-500">
-                          {customer.phone}
+                          {customer.phone || customer.alternatePhone || ""}
                         </div>
                       </div>
                     ))
@@ -397,6 +407,32 @@ function CreateInvoiceModal({
                 name="treatmentType"
                 value={formData.treatmentType}
                 onChange={handleChange}
+                className="w-full border rounded-lg p-3"
+              />
+            </div>
+
+            <div>
+              <label className="block mb-2">Billing Period</label>
+
+              <input
+                type="text"
+                name="billingPeriod"
+                value={formData.billingPeriod}
+                onChange={handleChange}
+                placeholder="e.g. 01/09/2026 to 30/09/2026"
+                className="w-full border rounded-lg p-3"
+              />
+            </div>
+
+            <div>
+              <label className="block mb-2">Contract Period</label>
+
+              <input
+                type="text"
+                name="contractPeriod"
+                value={formData.contractPeriod}
+                onChange={handleChange}
+                placeholder="e.g. 01/09/2026 to 31/08/2027"
                 className="w-full border rounded-lg p-3"
               />
             </div>

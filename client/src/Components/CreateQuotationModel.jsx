@@ -17,6 +17,7 @@ const emptyService = () => ({
   serviceName: "",
   frequency: "",
   cost: "",
+  location: "",
 });
 
 const emptyTreatment = () => ({
@@ -54,6 +55,7 @@ const getInitialFormData = (
               serviceName: s.serviceName || "",
               frequency: s.frequency || "",
               cost: s.cost ?? "",
+              location: s.location || "",
             }))
           : [emptyService()],
       paymentTerm:
@@ -291,11 +293,15 @@ function CreateQuotationModal({
     0,
   );
 
-  const filteredCustomers = customers.filter((customer) =>
-    customer.fullName
-      ?.toLowerCase()
-      .includes(customerSearch.trim().toLowerCase()),
-  );
+  const filteredCustomers = customers.filter((customer) => {
+    const q = customerSearch.trim().toLowerCase();
+    return (
+      (customer.fullName?.toLowerCase() || "").includes(q) ||
+      (customer.phone?.toLowerCase() || "").includes(q) ||
+      (customer.alternatePhone?.toLowerCase() || "").includes(q) ||
+      (customer.companyName?.toLowerCase() || "").includes(q)
+    );
+  });
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -306,11 +312,13 @@ function CreateQuotationModal({
 
     const quotationData = {
       ...formData,
+      totalAmount: totalCost,
       services: isAtt
         ? []
         : formData.services.map((service) => ({
             ...service,
             cost: Number(service.cost),
+            location: service.location || "",
           })),
       treatments: isAtt
         ? formData.treatments.map((t) => ({
@@ -666,7 +674,7 @@ function CreateQuotationModal({
                 {formData.services.map((service, index) => (
                   <div
                     key={index}
-                    className="grid gap-3 rounded-lg border p-4 md:grid-cols-[2fr_1fr_1fr_auto]"
+                    className="grid gap-3 rounded-lg border p-4 md:grid-cols-[1.5fr_1.5fr_1fr_1fr_auto]"
                   >
                     <div>
                       <label className="mb-1 block text-sm text-gray-600">
@@ -681,6 +689,22 @@ function CreateQuotationModal({
                         }
                         className="w-full rounded-lg border p-2"
                         required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm text-gray-600">
+                        Location to be Treated
+                      </label>
+                      <input
+                        type="text"
+                        name="location"
+                        value={service.location || ""}
+                        onChange={(event) =>
+                          handleServiceChange(index, event)
+                        }
+                        placeholder="e.g. Virar West (Optional)"
+                        className="w-full rounded-lg border p-2"
                       />
                     </div>
 
