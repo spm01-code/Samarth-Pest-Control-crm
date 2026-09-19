@@ -22,12 +22,16 @@ const PORT = process.env.PORT || 8000;
 
 // Middlewares
 // CORS
-const allowedOrigins = [
-'https://spmdashboard.cloud',
-  'https://www.spmdashboard.cloud',
-  'http://localhost:5173',
-  'http://localhost:3000'
+const defaultAllowedOrigins = [
+  "https://spmdashboard.cloud",
+  "https://www.spmdashboard.cloud",
+  "http://localhost:5173",
+  "http://localhost:3000",
 ];
+const envAllowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(",").map((origin) => origin.trim()).filter(Boolean)
+  : [];
+const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envAllowedOrigins]));
 
 app.use(
   cors({
@@ -81,6 +85,12 @@ mongoose
 // Routes
 app.get("/", (req, res) => {
   res.send("Hello");
+});
+app.get("/api", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "API is running",
+  });
 });
 app.use("/api/admin", adminRoutes);
 app.use("/api/customers", authMiddleware, customerRoutes);

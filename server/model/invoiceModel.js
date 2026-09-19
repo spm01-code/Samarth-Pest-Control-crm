@@ -96,7 +96,29 @@ const invoiceSchema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Service",
-        required: true,
+      },
+    ],
+
+    customServices: [
+      {
+        serviceName: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        amount: {
+          type: Number,
+          required: true,
+          min: 0,
+        },
+        desc: {
+          type: String,
+          trim: true,
+        },
+        serviceDate: {
+          type: Date,
+          default: Date.now,
+        },
       },
     ],
 

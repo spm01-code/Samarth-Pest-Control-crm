@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
+import { BASE_URL } from "../API/apiConfig";
 import { fetchInvoiceById } from "../slices/invoiceSlice";
 import { deleteInvoice } from "../slices/invoiceSlice";
 import { useNavigate } from "react-router-dom";
@@ -147,11 +148,16 @@ function InvoiceDetails() {
   };
 
   const getServiceRows = () => {
-    if (!invoice.services || invoice.services.length === 0) {
+    const allServices = [
+      ...(invoice.services || []),
+      ...(invoice.customServices || []),
+    ];
+
+    if (allServices.length === 0) {
       return '<div class="service-detail">-</div>';
     }
 
-    return invoice.services
+    return allServices
       .map((service) => {
         const serviceBits = [
           formatDate(service.serviceDate),
@@ -671,11 +677,11 @@ function InvoiceDetails() {
         onClose={() => setShowPreview(false)}
         title="Preview"
         iframeId="invoice-preview-iframe"
-        iframeSrc={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/invoices/${id}/pdf?token=${token}`}
+        iframeSrc={`${BASE_URL}/invoices/${id}/pdf?token=${token}`}
         iframeTitle="Invoice PDF Preview"
         onPrint={() => {
           window.open(
-            `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/invoices/${id}/pdf?token=${token}`,
+            `${BASE_URL}/invoices/${id}/pdf?token=${token}`,
             "_blank"
           );
         }}

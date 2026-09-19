@@ -1,6 +1,6 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { BASE_URL } from "./apiConfig";
 
-const API_URL = `${BASE_URL}/api/services`;
+const API_URL = `${BASE_URL}/services`;
 
 const getHeaders = (token) => {
   if (!token) {

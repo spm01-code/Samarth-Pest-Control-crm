@@ -267,7 +267,9 @@ function Upload() {
       setHeaders(res.headers || []);
       setColumns(res.columns || []);
       setSampleRows(res.sampleRows || []);
-      setTargetEntity(res.detectedEntity || "Customer");
+      const rawEntity = res.detectedEntity;
+      const entityStr = typeof rawEntity === "object" && rawEntity !== null ? rawEntity.crmEntity || "Customer" : rawEntity;
+      setTargetEntity(entityStr || "Customer");
       setMappings(res.defaultMappings || {});
       setAvailableEntities(res.availableEntities || []);
       setEntityFields(res.entityFields || {});
@@ -520,7 +522,7 @@ function Upload() {
                 <div className="flex items-center gap-3">
                   <h2 className="text-2xl font-bold text-white">Column Mapping</h2>
                   <span className="bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 text-xs font-bold px-3 py-1 rounded-full uppercase">
-                    Format: {targetEntity}
+                    Format: {typeof targetEntity === "object" ? targetEntity.crmEntity || "Customer" : targetEntity}
                   </span>
                 </div>
                 <p className="text-slate-400 text-sm mt-1">
@@ -531,7 +533,7 @@ function Upload() {
               <div className="flex items-center gap-3">
                 <label className="text-xs font-bold text-slate-300 uppercase">Target Entity:</label>
                 <select
-                  value={targetEntity}
+                  value={typeof targetEntity === "object" ? targetEntity.crmEntity || "Customer" : targetEntity}
                   onChange={(e) => setTargetEntity(e.target.value)}
                   className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-cyan-300 font-semibold outline-none"
                 >
@@ -584,7 +586,7 @@ function Upload() {
                       className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 outline-none focus:border-cyan-400"
                     >
                       <option value="UNMAPPED">-- Do Not Import (Unmapped) --</option>
-                      {(entityFields[targetEntity] || []).map((f) => (
+                      {(entityFields[typeof targetEntity === "object" ? targetEntity.crmEntity || "Customer" : targetEntity] || []).map((f) => (
                         <option key={f.key} value={f.key}>
                           {f.label} {f.required ? "*" : ""}
                         </option>

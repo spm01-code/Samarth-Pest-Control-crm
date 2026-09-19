@@ -7,6 +7,8 @@ import { deleteRenewal, fetchRenewals } from "../slices/renewalSlice";
 import { HiOutlineEye, HiOutlinePrinter, HiOutlineTrash } from "react-icons/hi2";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import TooltipCell from "../Components/TooltipCell";
+import DataTable from "../Components/DataTable";
 
 function Renewals() {
   const dispatch = useDispatch();
@@ -82,79 +84,77 @@ function Renewals() {
         />
       </div>
 
-      {error && <p className="mb-5 rounded-lg bg-red-50 p-4 text-red-700">{error}</p>}
-      {loading && <p className="py-10 text-center">Loading renewals...</p>}
-      {!loading && filteredRenewals.length === 0 && (
-        <p className="rounded-xl bg-white p-10 text-center text-gray-500 shadow-sm">
-          No contract renewals found
-        </p>
-      )}
-      {!loading && filteredRenewals.length > 0 && (
-        <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px]">
-              <thead className="bg-slate-100">
-                <tr>
-                  <th className="p-4 text-left">Renewal No</th>
-                  <th className="p-4 text-left">Customer</th>
-                  <th className="p-4 text-left">Address</th>
-                  <th className="p-4 text-left">Date</th>
-                  <th className="p-4 text-left">Status</th>
-                  <th className="p-4 text-left whitespace-nowrap">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRenewals.map((renewal) => (
-                  <tr key={renewal._id} className="border-t hover:bg-slate-50">
-                    <td className="p-4 font-medium">{renewal.renewalNumber}</td>
-                    <td className="p-4">{renewal.customer?.fullName || "N/A"}</td>
-                    <td className="max-w-xs truncate p-4">
-                      {renewal.customer?.address || "-"}
-                    </td>
-                    <td className="p-4">{formatDate(renewal.renewalDate)}</td>
-                    <td className="p-4">
-                      <span className="rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-700">
-                        {renewal.status}
-                      </span>
-                    </td>
-                    <td className="p-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/renewals/${renewal._id}`)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 hover:border-blue-300 hover:text-blue-800 cursor-pointer !shadow-none active:!translate-y-0"
-                          title="View Renewal Details"
-                        >
-                          <HiOutlineEye className="size-3.5 shrink-0" />
-                          View
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/renewals/${renewal._id}/print`)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 hover:border-slate-300 hover:text-slate-900 cursor-pointer !shadow-none active:!translate-y-0"
-                          title="Print Renewal"
-                        >
-                          <HiOutlinePrinter className="size-3.5 shrink-0" />
-                          Print
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(renewal._id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 hover:text-red-700 cursor-pointer !shadow-none active:!translate-y-0"
-                          title="Delete Contract Renewal"
-                        >
-                          <HiOutlineTrash className="size-3.5 shrink-0" />
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <DataTable
+        headers={[
+          { key: "rNo", label: "Renewal No", width: "18%" },
+          { key: "customer", label: "Customer", width: "24%" },
+          { key: "address", label: "Address", width: "28%" },
+          { key: "date", label: "Date", width: "12%" },
+          { key: "status", label: "Status", width: "10%" },
+          { key: "actions", label: "Actions", width: "160px" },
+        ]}
+        loading={loading}
+        error={error}
+        emptyMessage="No contract renewals found"
+        minWidth="min-w-[900px]"
+        hasActions={true}
+      >
+        {filteredRenewals.map((renewal) => (
+          <tr key={renewal._id} className="border-t border-slate-100 hover:bg-slate-50 transition group">
+            <td className="p-3.5 font-semibold text-slate-900">
+              <TooltipCell value={renewal.renewalNumber} maxWidth="max-w-[150px]" />
+            </td>
+
+            <td className="p-3.5 font-medium text-slate-900">
+              <TooltipCell value={renewal.customer?.fullName} maxWidth="max-w-[200px]" />
+            </td>
+
+            <td className="p-3.5 text-slate-700">
+              <TooltipCell value={renewal.customer?.address} maxWidth="max-w-[260px]" />
+            </td>
+
+            <td className="p-3.5 text-slate-700 whitespace-nowrap">
+              {formatDate(renewal.renewalDate)}
+            </td>
+
+            <td className="p-3.5">
+              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 whitespace-nowrap">
+                {renewal.status}
+              </span>
+            </td>
+
+            <td className="p-3.5 sticky right-0 bg-white group-hover:bg-slate-50 border-l border-slate-100 shadow-[-4px_0px_8px_rgba(0,0,0,0.03)] z-10 w-[160px]">
+              <div className="flex items-center justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/renewals/${renewal._id}`)}
+                  className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 hover:border-blue-300 cursor-pointer"
+                  title="View Renewal Details"
+                >
+                  <HiOutlineEye className="size-3.5 shrink-0" />
+                  View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/renewals/${renewal._id}/print`)}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 hover:border-slate-300 cursor-pointer"
+                  title="Print Renewal"
+                >
+                  <HiOutlinePrinter className="size-3.5 shrink-0" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(renewal._id)}
+                  className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 cursor-pointer"
+                  title="Delete Contract Renewal"
+                >
+                  <HiOutlineTrash className="size-3.5 shrink-0" />
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
       <CreateRenewalModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
     </div>
   );

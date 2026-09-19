@@ -7,6 +7,8 @@ import { fetchQuotations, deleteQuotation } from "../slices/quotationSlice";
 import CreateQuotationModal from "../Components/CreateQuotationModel";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import TooltipCell from "../Components/TooltipCell";
+import DataTable from "../Components/DataTable";
 
 function Quotations() {
   const dispatch = useDispatch();
@@ -193,135 +195,102 @@ function Quotations() {
         </div>
       </div>
 
-      {loading && (
-        <div className="text-center py-10">Loading quotations...</div>
-      )}
+      <DataTable
+        headers={[
+          { key: "qNo", label: "Quotation No", width: "16%" },
+          { key: "customer", label: "Customer", width: "20%" },
+          { key: "date", label: "Date", width: "12%" },
+          { key: "premises", label: "Premises", width: "20%" },
+          { key: "billing", label: "Billing", width: "12%" },
+          { key: "status", label: "Status", width: "10%" },
+          { key: "actions", label: "Actions", width: "160px" },
+        ]}
+        loading={loading}
+        error={error}
+        emptyMessage="No quotations found"
+        minWidth="min-w-[1000px]"
+        hasActions={true}
+      >
+        {filteredQuotations.map((quotation) => (
+          <tr
+            key={quotation._id}
+            className="border-t border-slate-100 hover:bg-slate-50 transition group"
+          >
+            <td className="p-3.5 font-semibold text-slate-900">
+              <div className="flex items-center gap-2">
+                <TooltipCell value={quotation.quotationNumber} maxWidth="max-w-[140px]" />
+                <span
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                    quotation.quotationType === "ATT"
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-blue-100 text-blue-800"
+                  }`}
+                >
+                  {quotation.quotationType || "PC"}
+                </span>
+              </div>
+            </td>
 
-      {error && (
-        <div className="bg-red-100 text-red-600 p-4 rounded-lg mb-6">
-          {error}
-        </div>
-      )}
+            <td className="p-3.5 font-medium text-slate-900">
+              <TooltipCell value={quotation.customer?.fullName} maxWidth="max-w-[180px]" />
+            </td>
 
-      {!loading && filteredQuotations.length === 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-10 text-center text-gray-500">
-          No quotations found
-        </div>
-      )}
+            <td className="p-3.5 text-slate-700 whitespace-nowrap">
+              {formatDate(quotation.quotationDate)}
+            </td>
 
-      {!loading && filteredQuotations.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1000px]">
-              <thead className="bg-slate-100">
-                <tr>
-                  <th className="text-left p-4">Quotation No</th>
+            <td className="p-3.5 text-slate-700">
+              <TooltipCell value={quotation.premises} maxWidth="max-w-[200px]" />
+            </td>
 
-                  <th className="text-left p-4">Customer</th>
+            <td className="p-3.5 text-slate-700">
+              <TooltipCell value={quotation.billingTerm} maxWidth="max-w-[120px]" />
+            </td>
 
-                  <th className="text-left p-4">Date</th>
+            <td className="p-3.5">
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${getStatusClass(
+                  quotation.status,
+                )}`}
+              >
+                {quotation.status}
+              </span>
+            </td>
 
-                  <th className="text-left p-4">Premises</th>
+            <td className="p-3.5 sticky right-0 bg-white group-hover:bg-slate-50 border-l border-slate-100 shadow-[-4px_0px_8px_rgba(0,0,0,0.03)] z-10 w-[160px]">
+              <div className="flex items-center justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/quotations/${quotation._id}`)}
+                  className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 hover:border-blue-300 cursor-pointer"
+                  title="View Quotation"
+                >
+                  <HiOutlineEye className="size-3.5 shrink-0" />
+                  View
+                </button>
 
-                  <th className="text-left p-4">Billing</th>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/customers/${quotation.customer?._id}?tab=quotations`)}
+                  className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 hover:border-cyan-300 cursor-pointer"
+                  title="View Customer Quotations"
+                >
+                  <HiOutlineUser className="size-3.5 shrink-0" />
+                </button>
 
-                  <th className="text-left p-4">Status</th>
-
-                  <th className="text-left p-4 whitespace-nowrap">Actions</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {filteredQuotations.map((quotation) => (
-                  <tr
-                    key={quotation._id}
-                    className="border-t hover:bg-slate-50"
-                  >
-                    <td className="p-4 font-medium">
-                      <div className="flex items-center gap-2">
-                        <span>{quotation.quotationNumber}</span>
-                        <span
-                          className={`rounded px-2 py-0.5 text-xs font-semibold ${
-                            quotation.quotationType === "ATT"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-blue-100 text-blue-800"
-                          }`}
-                        >
-                          {quotation.quotationType || "PC"}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="p-4">
-                      {quotation.customer?.fullName || "N/A"}
-                    </td>
-
-                    <td className="p-4">
-                      {formatDate(quotation.quotationDate)}
-                    </td>
-
-                    <td className="p-4 max-w-xs truncate">
-                      {quotation.premises}
-                    </td>
-
-                    <td className="p-4">{quotation.billingTerm || "-"}</td>
-
-                    <td className="p-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-sm ${getStatusClass(
-                          quotation.status,
-                        )}`}
-                      >
-                        {quotation.status}
-                      </span>
-                    </td>
-
-                    <td className="p-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(`/quotations/${quotation._id}`)
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 hover:border-blue-300 hover:text-blue-800 cursor-pointer !shadow-none active:!translate-y-0"
-                          title="View Quotation"
-                        >
-                          <HiOutlineEye className="size-3.5 shrink-0" />
-                          View
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(
-                              `/customers/${quotation.customer?._id}?tab=quotations`,
-                            )
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 hover:border-cyan-300 hover:text-cyan-800 cursor-pointer !shadow-none active:!translate-y-0"
-                          title="View Customer Quotations"
-                        >
-                          <HiOutlineUser className="size-3.5 shrink-0" />
-                          Customer
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(quotation._id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 hover:text-red-700 cursor-pointer !shadow-none active:!translate-y-0"
-                          title="Delete Quotation"
-                        >
-                          <HiOutlineTrash className="size-3.5 shrink-0" />
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                <button
+                  type="button"
+                  onClick={() => handleDelete(quotation._id)}
+                  className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 cursor-pointer"
+                  title="Delete Quotation"
+                >
+                  <HiOutlineTrash className="size-3.5 shrink-0" />
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
 
       <CreateQuotationModal
         isOpen={isCreateOpen}

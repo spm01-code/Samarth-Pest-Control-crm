@@ -1,3 +1,5 @@
+import TooltipCell from "./TooltipCell";
+
 function AlertCard({ alert, onView }) {
   const typeStyles = {
     expired: {
@@ -17,10 +19,10 @@ function AlertCard({ alert, onView }) {
     },
   };
 
-  const style = typeStyles[alert.type];
+  const style = typeStyles[alert.type] || typeStyles.service;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition">
+    <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div
           className={`w-12 h-12 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${style.iconClass}`}
@@ -30,23 +32,23 @@ function AlertCard({ alert, onView }) {
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-semibold text-lg text-slate-900">
-              {alert.customerName}
-            </h2>
+            <TooltipCell value={alert.customerName} maxWidth="max-w-[260px] sm:max-w-[360px]" className="font-semibold text-lg text-slate-900" />
 
             <span
-              className={`px-2.5 py-1 rounded-full text-xs font-medium ${style.badgeClass}`}
+              className={`px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${style.badgeClass}`}
             >
               {alert.typeLabel}
             </span>
           </div>
 
-          <p className="text-slate-700 mt-1">{alert.title}</p>
+          <div className="mt-1">
+            <TooltipCell value={alert.title} maxWidth="max-w-[300px] sm:max-w-[500px]" className="text-slate-700 font-medium" />
+          </div>
 
           <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-sm text-slate-500">
-            <span>{alert.reference}</span>
+            <TooltipCell value={alert.reference} maxWidth="max-w-[200px]" />
             <span>{alert.dateLabel}: {alert.formattedDate}</span>
-            {alert.amount && <span>{alert.amount}</span>}
+            {alert.amount && <span className="font-semibold text-slate-900">{alert.amount}</span>}
           </div>
         </div>
 

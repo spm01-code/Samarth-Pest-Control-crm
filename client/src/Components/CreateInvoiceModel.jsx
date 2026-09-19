@@ -6,6 +6,7 @@ import { fetchCustomers } from "../slices/customerSlice";
 import { fetchServices } from "../slices/serviceSlice";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import ServiceSelectDropdown from "./ServiceSelectDropdown";
 
 function CreateInvoiceModal({
   isOpen,
@@ -28,6 +29,7 @@ function CreateInvoiceModal({
     invoiceType: "GST",
     customerId: initialCustomer?._id || "",
     services: [],
+    customServices: [],
     workOrderNumber: "",
     workOrderDate: "",
     gstNumber: "",
@@ -91,10 +93,17 @@ function CreateInvoiceModal({
     formData.services.includes(service._id),
   );
 
-  const subtotal = selectedServices.reduce(
+  const existingSubtotal = selectedServices.reduce(
     (sum, service) => sum + service.amount,
     0,
   );
+
+  const customSubtotal = (formData.customServices || []).reduce(
+    (sum, item) => sum + Number(item.amount || 0),
+    0,
+  );
+
+  const subtotal = existingSubtotal + customSubtotal;
 
   const isGstInvoice = formData.invoiceType === "GST";
   const cgst = isGstInvoice ? (subtotal * Number(formData.cgstPercentage)) / 100 : 0;
@@ -296,6 +305,8 @@ function CreateInvoiceModal({
                           setFormData((prev) => ({
                             ...prev,
                             customerId: customer._id,
+                            services: [],
+                            customServices: [],
                           }));
 
                           setCustomerSearch(customer.fullName);
@@ -319,30 +330,27 @@ function CreateInvoiceModal({
 
           {/* Services */}
 
-          {formData.customerId && (
-            <div>
-              <label className="block font-medium mb-2">Services</label>
-
-              <div className="grid md:grid-cols-2 gap-3 border rounded-lg p-4">
-                {availableServices.map((service) => (
-                  <label key={service._id} className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      checked={formData.services.includes(service._id)}
-                      onChange={() => handleServiceToggle(service._id)}
-                    />
-
-                    <span>
-                      {service.serviceName}
-                      {" • "}₹{service.amount}
-                      {" • "}
-                      {service.status}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
+          <ServiceSelectDropdown
+            customerId={formData.customerId}
+            customerServices={availableServices}
+            selectedServiceIds={formData.services}
+            onServiceToggle={handleServiceToggle}
+            customServices={formData.customServices || []}
+            onAddCustomService={(customItem) => {
+              setFormData((prev) => ({
+                ...prev,
+                customServices: [...(prev.customServices || []), customItem],
+              }));
+            }}
+            onRemoveCustomService={(customId) => {
+              setFormData((prev) => ({
+                ...prev,
+                customServices: (prev.customServices || []).filter(
+                  (item) => item.id !== customId
+                ),
+              }));
+            }}
+          />
 
           {/* Work Order */}
 

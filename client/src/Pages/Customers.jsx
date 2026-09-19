@@ -4,6 +4,8 @@ import { fetchCustomers } from "../slices/customerSlice";
 import { useNavigate } from "react-router-dom";
 import CreateCustomerModal from "../Components/CreateCustomerModel";
 import { FaPlus } from "react-icons/fa";
+import TooltipCell from "../Components/TooltipCell";
+import DataTable from "../Components/DataTable";
 
 function Customers() {
   const dispatch = useDispatch();
@@ -119,75 +121,68 @@ function Customers() {
 
       {/* Customer List */}
       {!loading && !error && (
-        <>
-          {filteredCustomers.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm p-10 text-center text-gray-500">
-              No customers found
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px]">
-                  <thead className="bg-slate-100">
-                    <tr>
-                      <th className="text-left p-4">Customer</th>
-                      <th className="text-left p-4">Customer Type</th>
-                      <th className="text-left p-4">Phone</th>
-                      <th className="text-left p-4">Email</th>
-                      <th className="text-left p-4">Address</th>
-                      <th className="text-left p-4">Status</th>
-                    </tr>
-                  </thead>
+        <DataTable
+          headers={[
+            { key: "name", label: "Customer", width: "22%" },
+            { key: "type", label: "Customer Type", width: "14%" },
+            { key: "phone", label: "Phone", width: "15%" },
+            { key: "email", label: "Email", width: "20%" },
+            { key: "address", label: "Address", width: "20%" },
+            { key: "status", label: "Status", width: "9%" },
+          ]}
+          loading={loading}
+          error={error}
+          emptyMessage="No customers found"
+          minWidth="min-w-[1000px]"
+        >
+          {filteredCustomers.map((customer) => (
+            <tr
+              key={customer._id}
+              className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer transition"
+              onClick={() => navigate(`/customers/${customer._id}`)}
+            >
+              <td className="p-3.5 font-medium">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-800/80 text-white flex items-center justify-center font-semibold text-sm shrink-0">
+                    {customer.fullName?.charAt(0)?.toUpperCase()}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <TooltipCell value={customer.fullName} maxWidth="max-w-[200px]" className="font-semibold text-slate-900" />
+                    {customer.companyName && (
+                      <TooltipCell value={customer.companyName} maxWidth="max-w-[180px]" className="text-xs text-slate-500" />
+                    )}
+                  </div>
+                </div>
+              </td>
 
-                  <tbody>
-                    {filteredCustomers.map((customer) => (
-                      <tr
-                        key={customer._id}
-                        className="border-t hover:bg-slate-50 cursor-pointer transition"
-                        onClick={() => navigate(`/customers/${customer._id}`)}
-                      >
-                        <td className="p-4 font-medium">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-800/80 text-white flex items-center justify-center font-semibold text-sm">
-                              {customer.fullName?.charAt(0)?.toUpperCase()}
-                            </div>
-                            <span>{customer.fullName || "N/A"}</span>
-                          </div>
-                        </td>
+              <td className="p-3.5 capitalize text-slate-700">
+                {customer.customerType || "-"}
+              </td>
 
-                        <td className="p-4 capitalize">
-                          {customer.customerType || "-"}
-                        </td>
+              <td className="p-3.5 text-slate-700">
+                <TooltipCell value={customer.phone || customer.alternatePhone} maxWidth="max-w-[140px]" />
+              </td>
 
-                        <td className="p-4">
-                          {customer.phone || "-"}
-                        </td>
+              <td className="p-3.5 text-slate-700">
+                <TooltipCell value={customer.email} maxWidth="max-w-[190px]" />
+              </td>
 
-                        <td className="p-4">
-                          {customer.email || "-"}
-                        </td>
+              <td className="p-3.5 text-slate-700">
+                <TooltipCell value={customer.address} maxWidth="max-w-[220px]" />
+              </td>
 
-                        <td className="p-4 max-w-xs truncate">
-                          {customer.address || "-"}
-                        </td>
-
-                        <td className="p-4">
-                          <span
-                            className={`px-3 py-1 rounded-full text-sm font-medium capitalize ${getStatusClass(
-                              customer.status
-                            )}`}
-                          >
-                            {customer.status || "active"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </>
+              <td className="p-3.5">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${getStatusClass(
+                    customer.status
+                  )}`}
+                >
+                  {customer.status || "active"}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </DataTable>
       )}
 
       <CreateCustomerModal

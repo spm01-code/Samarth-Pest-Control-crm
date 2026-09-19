@@ -1,8 +1,8 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { BASE_URL } from "./apiConfig";
 
 // REGISTER
 export const registerUser = async (data) => {
-  const res = await fetch(`${BASE_URL}/api/admin/register`, {
+  const res = await fetch(`${BASE_URL}/admin/register`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -21,7 +21,7 @@ export const registerUser = async (data) => {
 
 // VERIFY OTP
 export const verifyOTP = async (data) => {
-  const res = await fetch(`${BASE_URL}/api/admin/verifyotp`, {
+  const res = await fetch(`${BASE_URL}/admin/verifyotp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -40,7 +40,7 @@ export const verifyOTP = async (data) => {
 
 // LOGIN
 export const loginUser = async (data) => {
-  const res = await fetch(`${BASE_URL}/api/admin/login`, {
+  const res = await fetch(`${BASE_URL}/admin/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -60,7 +60,7 @@ export const loginUser = async (data) => {
 
 // REFRESH TOKEN
 export const refreshAccessToken = async () => {
-  const res = await fetch(`${BASE_URL}/api/admin/refresh`, {
+  const res = await fetch(`${BASE_URL}/admin/refresh`, {
     method: "POST",
     credentials: "include",
   });
@@ -76,7 +76,7 @@ export const refreshAccessToken = async () => {
 
 // RESEND REGISTRATION OTP
 export const resendRegistrationOTP = async (data) => {
-  const res = await fetch(`${BASE_URL}/api/admin/resend-otp`, {
+  const res = await fetch(`${BASE_URL}/admin/resend-otp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -95,7 +95,7 @@ export const resendRegistrationOTP = async (data) => {
 
 // REQUEST PASSWORD CHANGE OTP
 export const requestPasswordChangeOTP = async (data, token) => {
-  const res = await fetch(`${BASE_URL}/api/admin/change-password/request-otp`, {
+  const res = await fetch(`${BASE_URL}/admin/change-password/request-otp`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -115,7 +115,7 @@ export const requestPasswordChangeOTP = async (data, token) => {
 
 // VERIFY PASSWORD CHANGE
 export const verifyPasswordChangeAPI = async (data, token) => {
-  const res = await fetch(`${BASE_URL}/api/admin/change-password/verify`, {
+  const res = await fetch(`${BASE_URL}/admin/change-password/verify`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

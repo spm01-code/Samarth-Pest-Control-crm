@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { BASE_URL } from "./apiConfig";
 
 const safeParseResponse = async (res, defaultErrMsg) => {
   const text = await res.text();
@@ -23,7 +23,7 @@ export const uploadImportFile = async (file, token) => {
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch(`${BASE_URL}/api/import/upload`, {
+  const res = await fetch(`${BASE_URL}/import/upload`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -36,7 +36,7 @@ export const uploadImportFile = async (file, token) => {
 
 // 2. Select Sheet
 export const selectImportSheet = async (importSessionId, selectedSheet, token) => {
-  const res = await fetch(`${BASE_URL}/api/import/select-sheet`, {
+  const res = await fetch(`${BASE_URL}/import/select-sheet`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -50,7 +50,7 @@ export const selectImportSheet = async (importSessionId, selectedSheet, token) =
 
 // 3. Get Helper Data (Customers & Employees)
 export const getImportHelpers = async (token) => {
-  const res = await fetch(`${BASE_URL}/api/import/helpers`, {
+  const res = await fetch(`${BASE_URL}/import/helpers`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -61,7 +61,7 @@ export const getImportHelpers = async (token) => {
 
 // 4. Validate Session
 export const validateImportSession = async (data, token) => {
-  const res = await fetch(`${BASE_URL}/api/import/validate`, {
+  const res = await fetch(`${BASE_URL}/import/validate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -75,7 +75,7 @@ export const validateImportSession = async (data, token) => {
 
 // 5. Commit Session
 export const commitImportSession = async (data, token) => {
-  const res = await fetch(`${BASE_URL}/api/import/commit`, {
+  const res = await fetch(`${BASE_URL}/import/commit`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

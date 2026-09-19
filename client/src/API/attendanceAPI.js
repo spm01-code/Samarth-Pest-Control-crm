@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL  || "http://localhost:5000";
+import { BASE_URL } from "./apiConfig";
 
 // GET ATTENDANCE BY DATE
 export const fetchAttendanceByDateAPI = async (
@@ -10,7 +10,7 @@ export const fetchAttendanceByDateAPI = async (
   }
 
   const res = await fetch(
-    `${BASE_URL}/api/attendance/date/${date}`,
+    `${BASE_URL}/attendance/date/${date}`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -39,7 +39,7 @@ export const markAttendanceAPI = async (
   }
 
   const res = await fetch(
-    `${BASE_URL}/api/attendance/mark`,
+    `${BASE_URL}/attendance/mark`,
     {
       method: "POST",
       headers: {
@@ -71,7 +71,7 @@ export const fetchEmployeeAttendanceAPI = async (
   }
 
   const res = await fetch(
-    `${BASE_URL}/api/attendance/employee/${employeeId}`,
+    `${BASE_URL}/attendance/employee/${employeeId}`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -101,7 +101,7 @@ export const fetchMonthlyAttendanceAPI = async (
   }
 
   const res = await fetch(
-    `${BASE_URL}/api/attendance/month?month=${month}&year=${year}`,
+    `${BASE_URL}/attendance/month?month=${month}&year=${year}`,
     {
       headers: {
         Authorization: `Bearer ${token}`,

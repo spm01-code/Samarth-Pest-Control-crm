@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router-dom";
+import { BASE_URL } from "../API/apiConfig";
 import {
   deleteQuotation,
   fetchQuotationById,
@@ -1044,11 +1045,11 @@ ${safeText(customerAddress)}</strong>
         onClose={() => setShowPreview(false)}
         title="Preview"
         iframeId="quotation-preview-iframe"
-        iframeSrc={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/quotations/${id}/pdf?token=${token}`}
+        iframeSrc={`${BASE_URL}/quotations/${id}/pdf?token=${token}`}
         iframeTitle="Quotation PDF Preview"
         onPrint={() => {
           window.open(
-            `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/quotations/${id}/pdf?token=${token}`,
+            `${BASE_URL}/quotations/${id}/pdf?token=${token}`,
             "_blank"
           );
         }}

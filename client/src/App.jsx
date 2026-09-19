@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useSelector } from "react-redux";
+import { BASE_URL } from "./API/apiConfig";
 
 import DashboardLayout from "./Pages/DashboardLayout";
 
@@ -39,7 +40,6 @@ function App() {
   useEffect(() => {
     let isMounted = true;
     const controller = new AbortController();
-    const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
     // Show loader if the server check takes longer than 800ms
     const timer = setTimeout(() => {

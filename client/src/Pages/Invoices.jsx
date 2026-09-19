@@ -10,6 +10,8 @@ import { HiOutlineEye, HiOutlineUser, HiOutlineTrash } from "react-icons/hi2";
 import CreateInvoiceModal from "../Components/CreateInvoiceModel";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import TooltipCell from "../Components/TooltipCell";
+import DataTable from "../Components/DataTable";
 
 function InvoicePage() {
   const dispatch = useDispatch();
@@ -190,134 +192,105 @@ function InvoicePage() {
         />
       </div>
 
-      {loading && (
-        <div className="text-center py-10">
-          Loading invoices...
-        </div>
-      )}
+      <DataTable
+        headers={[
+          { key: "invNo", label: "Invoice No", width: "14%" },
+          { key: "customer", label: "Customer", width: "20%" },
+          { key: "date", label: "Invoice Date", width: "11%" },
+          { key: "type", label: "Type", width: "10%" },
+          { key: "amount", label: "Amount", width: "12%" },
+          { key: "payment", label: "Payment", width: "12%" },
+          { key: "status", label: "Status", width: "10%" },
+          { key: "dueDate", label: "Due Date", width: "11%" },
+          { key: "actions", label: "Actions", width: "160px" },
+        ]}
+        loading={loading}
+        error={error}
+        emptyMessage="No invoices found"
+        minWidth="min-w-[1100px]"
+        hasActions={true}
+      >
+        {filteredInvoices.map((invoice) => (
+          <tr
+            key={invoice._id}
+            className="border-t border-slate-100 hover:bg-slate-50 transition group"
+          >
+            <td className="p-3.5 font-semibold text-slate-900">
+              <TooltipCell value={invoice.invoiceNumber} maxWidth="max-w-[140px]" />
+            </td>
 
-      {error && (
-        <div className="bg-red-100 text-red-600 p-4 rounded-lg mb-6">
-          {error}
-        </div>
-      )}
+            <td className="p-3.5 font-medium text-slate-900">
+              <TooltipCell value={invoice.customer?.fullName} maxWidth="max-w-[200px]" />
+            </td>
 
-      {!loading && filteredInvoices.length === 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-10 text-center text-gray-500">
-          No invoices found
-        </div>
-      )}
+            <td className="p-3.5 text-slate-700 whitespace-nowrap">
+              {formatDate(invoice.invoiceDate)}
+            </td>
 
-      {!loading && filteredInvoices.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px]">
-              <thead className="bg-slate-100">
-                <tr>
-                  <th className="text-left p-4">Invoice No</th>
-                  <th className="text-left p-4">Customer</th>
-                  <th className="text-left p-4">Invoice Date</th>
-                  <th className="text-left p-4">Invoice Type</th>
-                  <th className="text-left p-4">Amount</th>
-                  <th className="text-left p-4">Payment</th>
-                  <th className="text-left p-4">Invoice Status</th>
-                  <th className="text-left p-4">Due Date</th>
-                  <th className="text-left p-4 whitespace-nowrap">Actions</th>
-                </tr>
-              </thead>
+            <td className="p-3.5 text-slate-700 font-medium">
+              <span className={`px-2 py-0.5 rounded text-xs font-semibold ${invoice.invoiceType === 'GST' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700'}`}>
+                {invoice.invoiceType}
+              </span>
+            </td>
 
-              <tbody>
-                {filteredInvoices.map((invoice) => (
-                  <tr
-                    key={invoice._id}
-                    className="border-t hover:bg-slate-50"
-                  >
-                    <td className="p-4 font-medium">
-                      {invoice.invoiceNumber}
-                    </td>
+            <td className="p-3.5 font-bold text-slate-900 whitespace-nowrap">
+              Rs. {invoice.totalAmount?.toLocaleString()}
+            </td>
 
-                    <td className="p-4">
-                      {invoice.customer?.fullName || "N/A"}
-                    </td>
+            <td className="p-3.5">
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${getPaymentStatusClass(
+                  invoice.paymentStatus
+                )}`}
+              >
+                {invoice.paymentStatus}
+              </span>
+            </td>
 
-                    <td className="p-4">
-                      {formatDate(invoice.invoiceDate)}
-                    </td>
+            <td className="p-3.5">
+              <span className="px-2.5 py-1 rounded-full text-xs bg-slate-100 text-slate-700 font-medium whitespace-nowrap">
+                {invoice.status || "-"}
+              </span>
+            </td>
 
-                    <td className="p-4">
-                      {invoice.invoiceType}
-                    </td>
+            <td className="p-3.5 text-slate-700 whitespace-nowrap">
+              {formatDate(invoice.dueDate)}
+            </td>
 
-                    <td className="p-4">
-                      Rs. {invoice.totalAmount?.toLocaleString()}
-                    </td>
+            <td className="p-3.5 sticky right-0 bg-white group-hover:bg-slate-50 border-l border-slate-100 shadow-[-4px_0px_8px_rgba(0,0,0,0.03)] z-10 w-[160px]">
+              <div className="flex items-center justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/invoices/${invoice._id}`)}
+                  className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 hover:border-blue-300 cursor-pointer"
+                  title="View Invoice"
+                >
+                  <HiOutlineEye className="size-3.5 shrink-0" />
+                  View
+                </button>
 
-                    <td className="p-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-sm ${getPaymentStatusClass(
-                          invoice.paymentStatus
-                        )}`}
-                      >
-                        {invoice.paymentStatus}
-                      </span>
-                    </td>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/customers/${invoice.customer?._id}?tab=invoices`)}
+                  className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 hover:border-cyan-300 cursor-pointer"
+                  title="View Customer Invoices"
+                >
+                  <HiOutlineUser className="size-3.5 shrink-0" />
+                </button>
 
-                    <td className="p-4">
-                      <span className="px-3 py-1 rounded-full text-sm bg-slate-100 text-slate-700">
-                        {invoice.status || "-"}
-                      </span>
-                    </td>
-
-                    <td className="p-4">
-                      {formatDate(invoice.dueDate)}
-                    </td>
-
-                    <td className="p-4 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(`/invoices/${invoice._id}`)
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 hover:border-blue-300 hover:text-blue-800 cursor-pointer !shadow-none active:!translate-y-0"
-                          title="View Invoice"
-                        >
-                          <HiOutlineEye className="size-3.5 shrink-0" />
-                          View
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(
-                              `/customers/${invoice.customer?._id}?tab=invoices`
-                            )
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 hover:border-cyan-300 hover:text-cyan-800 cursor-pointer !shadow-none active:!translate-y-0"
-                          title="View Customer Invoices"
-                        >
-                          <HiOutlineUser className="size-3.5 shrink-0" />
-                          Customer
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(invoice._id)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 hover:text-red-700 cursor-pointer !shadow-none active:!translate-y-0"
-                          title="Delete Invoice"
-                        >
-                          <HiOutlineTrash className="size-3.5 shrink-0" />
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                <button
+                  type="button"
+                  onClick={() => handleDelete(invoice._id)}
+                  className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 cursor-pointer"
+                  title="Delete Invoice"
+                >
+                  <HiOutlineTrash className="size-3.5 shrink-0" />
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
 
       <CreateInvoiceModal
         isOpen={isCreateOpen}

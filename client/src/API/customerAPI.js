@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { BASE_URL } from "./apiConfig";
 
 // GET ALL CUSTOMERS
 export const getCustomers = async (token) => {
@@ -6,7 +6,7 @@ export const getCustomers = async (token) => {
     throw new Error("Please login to view customers");
   }
 
-  const res = await fetch(`${BASE_URL}/api/customers`, {
+  const res = await fetch(`${BASE_URL}/customers`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -27,7 +27,7 @@ export const getCustomerByID = async (id, token) => {
     throw new Error("Please login to view this customer");
   }
 
-  const res = await fetch(`${BASE_URL}/api/customers/${id}`, {
+  const res = await fetch(`${BASE_URL}/customers/${id}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -48,7 +48,7 @@ export const createCustomer = async (data, token) => {
     throw new Error("Please login to create customers");
   }
 
-  const res = await fetch(`${BASE_URL}/api/customers/create`, {
+  const res = await fetch(`${BASE_URL}/customers/create`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -72,7 +72,7 @@ export const updateCustomer = async (id, data, token) => {
     throw new Error("Please login to update customers");
   }
 
-  const res = await fetch(`${BASE_URL}/api/customers/${id}`, {
+  const res = await fetch(`${BASE_URL}/customers/${id}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -96,7 +96,7 @@ export const deleteCustomer = async (id, token) => {
     throw new Error("Please login to delete customers");
   }
 
-  const res = await fetch(`${BASE_URL}/api/customers/${id}`, {
+  const res = await fetch(`${BASE_URL}/customers/${id}`, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,

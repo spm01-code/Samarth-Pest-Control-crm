@@ -767,11 +767,17 @@ export const generateInvoiceHtml = (invoice, isGstInvoice, companySettings = nul
 
                 <!-- Dynamic Services -->
                 <div class="services-list">
-                  ${invoice.services && invoice.services.length > 0 ? invoice.services.map((service, index) => `
-                    <div class="service-item-row">
-                      ${index + 1}) ${service.serviceName}${service.desc ? ` (${service.desc})` : ''}${service.serviceDate ? ` : ${formatDate(service.serviceDate)}` : ''}
-                    </div>
-                  `).join('') : ''}
+                  ${(() => {
+                    const allSvc = [
+                      ...(invoice.services || []),
+                      ...(invoice.customServices || []),
+                    ];
+                    return allSvc.length > 0 ? allSvc.map((service, index) => `
+                      <div class="service-item-row">
+                        ${index + 1}) ${service.serviceName}${service.desc ? ` (${service.desc})` : ''}${service.serviceDate ? ` : ${formatDate(service.serviceDate)}` : ''}
+                      </div>
+                    `).join('') : '';
+                  })()}
                   <div class="service-total-row">TOTAL = Rs. ${formatAmount(subtotal)}</div>
                 </div>
 

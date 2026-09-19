@@ -82,12 +82,15 @@ export const registerAdmin = async (req, res) => {
       message: "OTP sent successfully",
     });
   } catch (error) {
-    console.error("Register Error:", error.message);
+    console.error(`[Register Admin Failure] ${error.message}`);
+    const isConfigError = error.message && (
+      error.message.includes("RESEND_API_KEY") ||
+      error.message.includes("OTP_FROM_EMAIL")
+    );
     res.status(500).json({
-      message:
-        error.message && error.message.includes("OTP_FROM_EMAIL")
-          ? error.message
-          : "Unable to send verification code. Please try again.",
+      message: isConfigError
+        ? error.message
+        : "Unable to send verification code. Please try again.",
     });
   }
 };
@@ -245,9 +248,15 @@ export const resendOTP = async (req, res) => {
       message: "Verification code sent successfully",
     });
   } catch (error) {
-    console.error("Resend OTP Error:", error.message);
+    console.error(`[Resend OTP Failure] ${error.message}`);
+    const isConfigError = error.message && (
+      error.message.includes("RESEND_API_KEY") ||
+      error.message.includes("OTP_FROM_EMAIL")
+    );
     res.status(500).json({
-      message: "Unable to send verification code. Please try again.",
+      message: isConfigError
+        ? error.message
+        : "Unable to send verification code. Please try again.",
     });
   }
 };
@@ -438,9 +447,15 @@ export const requestPasswordChangeOTP = async (req, res) => {
       email: admin.email,
     });
   } catch (error) {
-    console.error("Request Password Change OTP Error:", error.message);
+    console.error(`[Request Password Change OTP Failure] ${error.message}`);
+    const isConfigError = error.message && (
+      error.message.includes("RESEND_API_KEY") ||
+      error.message.includes("OTP_FROM_EMAIL")
+    );
     res.status(500).json({
-      message: "Unable to send verification code. Please try again.",
+      message: isConfigError
+        ? error.message
+        : "Unable to send verification code. Please try again.",
     });
   }
 };

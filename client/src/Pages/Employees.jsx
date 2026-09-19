@@ -4,6 +4,7 @@ import { fetchEmployees } from "../slices/employeeSlice";
 import { useNavigate } from "react-router-dom";
 import CreateEmployeeModel from "../Components/CreateEmployeeModel";
 import { FaPlus } from "react-icons/fa";
+import TooltipCell from "../Components/TooltipCell";
 
 function Employees() {
   const dispatch = useDispatch();
@@ -110,7 +111,7 @@ function Employees() {
       {!loading && !error && (
         <div className="space-y-3">
           {filteredEmployees.length === 0 && (
-            <div className="bg-white p-4 rounded-xl shadow">
+            <div className="bg-white p-6 rounded-xl shadow-sm text-center text-slate-500 font-medium">
               No employees found.
             </div>
           )}
@@ -118,23 +119,22 @@ function Employees() {
           {filteredEmployees.map((employee) => (
             <div
               key={employee._id}
-              className="bg-white rounded-xl shadow p-4 flex items-center justify-between cursor-pointer hover:bg-slate-100"
+              className="bg-white rounded-xl shadow-sm border border-slate-200/80 p-4 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition"
               onClick={() => navigate(`/employees/${employee._id}`)}
             >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-800/80 text-white flex items-center justify-center font-semibold">
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-800/80 text-white flex items-center justify-center font-semibold text-sm shrink-0">
                   {employee.fullName?.charAt(0)?.toUpperCase()}
                 </div>
 
-                <div>
-                  <p className="font-semibold">{employee.fullName}</p>
-
-                  <p className="text-sm text-gray-500">{employee.email}</p>
+                <div className="flex flex-col min-w-0">
+                  <TooltipCell value={employee.fullName} maxWidth="max-w-[240px] sm:max-w-[360px]" className="font-semibold text-slate-900 text-sm" />
+                  <TooltipCell value={employee.email} maxWidth="max-w-[220px] sm:max-w-[320px]" className="text-xs text-slate-500" />
                 </div>
               </div>
 
               <span
-                className={`px-3 py-1 rounded-full text-xs font-medium ${
+                className={`px-3 py-1 rounded-full text-xs font-semibold capitalize shrink-0 ml-3 ${
                   employee.status === "active"
                     ? "bg-green-100 text-green-700"
                     : "bg-red-100 text-red-700"

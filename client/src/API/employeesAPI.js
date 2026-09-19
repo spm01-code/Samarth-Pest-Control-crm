@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { BASE_URL } from "./apiConfig";
 
 // GET ALL EMPLOYEES
 export const fetchEmployeesAPI = async (token) => {
@@ -7,7 +7,7 @@ export const fetchEmployeesAPI = async (token) => {
   }
 
   const res = await fetch(
-    `${BASE_URL}/api/employees`,
+    `${BASE_URL}/employees`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -36,7 +36,7 @@ export const fetchEmployeeAPI = async (
   }
 
   const res = await fetch(
-    `${BASE_URL}/api/employees/${id}`,
+    `${BASE_URL}/employees/${id}`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -65,7 +65,7 @@ export const createEmployeeAPI = async (
   }
 
   const res = await fetch(
-    `${BASE_URL}/api/employees/create`,
+    `${BASE_URL}/employees/create`,
     {
       method: "POST",
       headers: {
@@ -98,7 +98,7 @@ export const updateEmployeeAPI = async (
   }
 
   const res = await fetch(
-    `${BASE_URL}/api/employees/${id}`,
+    `${BASE_URL}/employees/${id}`,
     {
       method: "PUT",
       headers: {
@@ -130,7 +130,7 @@ export const deleteEmployeeAPI = async (
   }
 
   const res = await fetch(
-    `${BASE_URL}/api/employees/${id}`,
+    `${BASE_URL}/employees/${id}`,
     {
       method: "DELETE",
       headers: {

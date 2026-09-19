@@ -771,9 +771,10 @@ export const selectSheet = async (req, res) => {
     // Auto-detect Target Entity Type based on classification or headers
     let detectedEntity = "Customer";
     const resolvedFromProfile = sheetClassification ? resolveTargetCrmEntity(sheetClassification.sourceProfile) : null;
+    const profileEntity = typeof resolvedFromProfile === "object" && resolvedFromProfile !== null ? resolvedFromProfile.crmEntity : resolvedFromProfile;
 
-    if (resolvedFromProfile && resolvedFromProfile !== "OUT_OF_SCOPE") {
-      detectedEntity = resolvedFromProfile;
+    if (profileEntity && profileEntity !== "OUT_OF_SCOPE") {
+      detectedEntity = profileEntity;
     } else {
       const upperHeaders = headers.map((h) => h.toUpperCase());
       if (upperHeaders.includes("JOB NO") && upperHeaders.includes("TYPE OF SERVICE")) {

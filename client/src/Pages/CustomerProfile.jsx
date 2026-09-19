@@ -27,6 +27,8 @@ import {
 } from "../utils/serviceDateCalculator";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import TooltipCell from "../Components/TooltipCell";
+import DataTable from "../Components/DataTable";
 
 function CustomerProfile() {
   const { id } = useParams();
@@ -407,53 +409,47 @@ function CustomerProfile() {
                 <h2 className="text-xl font-semibold">Contract Renewals (AMC)</h2>
               </div>
 
-              {renewalState.loading && <p>Loading contract renewals...</p>}
-
-              {!renewalState.loading && customerRenewals.length === 0 && (
-                <div className="bg-slate-100 rounded-2xl p-8 text-center text-gray-500">
-                  No contract renewals found for this customer.
-                </div>
-              )}
-
-              {customerRenewals.length > 0 && (
-                <div className="overflow-x-auto border rounded-2xl">
-                  <table className="w-full text-left">
-                    <thead className="bg-slate-100 text-slate-700 font-semibold border-b">
-                      <tr>
-                        <th className="p-3">Contract No</th>
-                        <th className="p-3">Service Name</th>
-                        <th className="p-3">Frequency</th>
-                        <th className="p-3">Total Amount</th>
-                        <th className="p-3">Contract End Date</th>
-                        <th className="p-3">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {customerRenewals.map((renewal) => (
-                        <tr key={renewal._id} className="hover:bg-slate-50">
-                          <td className="p-3 font-semibold text-slate-800">
-                            {renewal.renewalNumber}
-                          </td>
-                          <td className="p-3">
-                            {renewal.services?.map((s) => s.serviceName).join(", ") || "Pest Control"}
-                          </td>
-                          <td className="p-3">{renewal.services?.[0]?.frequency || renewal.paymentTerm || "-"}</td>
-                          <td className="p-3 font-medium">₹{Number(renewal.totalAmount || 0).toLocaleString("en-IN")}</td>
-                          <td className="p-3">{formatDate(renewal.contractEndDate)}</td>
-                          <td className="p-3">
-                            <button
-                              onClick={() => navigate(`/renewals/${renewal._id}`)}
-                              className="bg-cyan-600 text-white px-3 py-1 rounded-lg text-sm"
-                            >
-                              View
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <DataTable
+                headers={[
+                  { key: "cNo", label: "Contract No", width: "20%" },
+                  { key: "service", label: "Service Name", width: "28%" },
+                  { key: "freq", label: "Frequency", width: "16%" },
+                  { key: "amount", label: "Total Amount", width: "16%" },
+                  { key: "endDate", label: "End Date", width: "12%" },
+                  { key: "action", label: "Action", width: "80px" },
+                ]}
+                loading={renewalState.loading}
+                emptyMessage="No contract renewals found for this customer."
+                minWidth="min-w-[700px]"
+              >
+                {customerRenewals.map((renewal) => (
+                  <tr key={renewal._id} className="border-t border-slate-100 hover:bg-slate-50 transition">
+                    <td className="p-3.5 font-semibold text-slate-900">
+                      <TooltipCell value={renewal.renewalNumber} maxWidth="max-w-[140px]" />
+                    </td>
+                    <td className="p-3.5 text-slate-700 font-medium">
+                      <TooltipCell value={renewal.services?.map((s) => s.serviceName).join(", ") || "Pest Control"} maxWidth="max-w-[220px]" />
+                    </td>
+                    <td className="p-3.5 text-slate-600">
+                      {renewal.services?.[0]?.frequency || renewal.paymentTerm || "-"}
+                    </td>
+                    <td className="p-3.5 font-semibold text-slate-900 whitespace-nowrap">
+                      ₹{Number(renewal.totalAmount || 0).toLocaleString("en-IN")}
+                    </td>
+                    <td className="p-3.5 text-slate-700 whitespace-nowrap">
+                      {formatDate(renewal.contractEndDate)}
+                    </td>
+                    <td className="p-3.5 text-right">
+                      <button
+                        onClick={() => navigate(`/renewals/${renewal._id}`)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </DataTable>
             </div>
           )}
 
@@ -464,56 +460,51 @@ function CustomerProfile() {
 
                 <button
                   onClick={() => setShowInvoiceModal(true)}
-                  className="bg-cyan-600 text-white px-4 py-2 rounded-lg"
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition cursor-pointer"
                 >
                   Create Invoice
                 </button>
               </div>
 
-              {invoiceState.loading && <p>Loading invoices...</p>}
-
-              {!invoiceState.loading && customerInvoices.length === 0 && (
-                <div className="bg-slate-100 rounded-2xl p-8 text-center text-gray-500">
-                  No invoices found for this customer.
-                </div>
-              )}
-
-              {customerInvoices.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full border">
-                    <thead className="bg-slate-100">
-                      <tr>
-                        <th className="text-left p-3">Invoice No</th>
-                        <th className="text-left p-3">Amount</th>
-                        <th className="text-left p-3">Status</th>
-                        <th className="text-left p-3">Due Date</th>
-                        <th className="text-left p-3">Action</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {customerInvoices.map((invoice) => (
-                        <tr key={invoice._id} className="border-t">
-                          <td className="p-3">{invoice.invoiceNumber}</td>
-                          <td className="p-3">Rs. {invoice.totalAmount}</td>
-                          <td className="p-3">{invoice.paymentStatus}</td>
-                          <td className="p-3">{formatDate(invoice.dueDate)}</td>
-                          <td className="p-3">
-                            <button
-                              onClick={() =>
-                                navigate(`/invoices/${invoice._id}`)
-                              }
-                              className="bg-blue-600 text-white px-3 py-1 rounded-lg"
-                            >
-                              View
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <DataTable
+                headers={[
+                  { key: "invNo", label: "Invoice No", width: "25%" },
+                  { key: "amount", label: "Amount", width: "22%" },
+                  { key: "status", label: "Status", width: "23%" },
+                  { key: "dueDate", label: "Due Date", width: "20%" },
+                  { key: "action", label: "Action", width: "10%" },
+                ]}
+                loading={invoiceState.loading}
+                emptyMessage="No invoices found for this customer."
+                minWidth="min-w-[650px]"
+              >
+                {customerInvoices.map((invoice) => (
+                  <tr key={invoice._id} className="border-t border-slate-100 hover:bg-slate-50 transition">
+                    <td className="p-3.5 font-semibold text-slate-900">
+                      <TooltipCell value={invoice.invoiceNumber} maxWidth="max-w-[150px]" />
+                    </td>
+                    <td className="p-3.5 font-bold text-slate-900 whitespace-nowrap">
+                      Rs. {invoice.totalAmount?.toLocaleString()}
+                    </td>
+                    <td className="p-3.5">
+                      <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 whitespace-nowrap">
+                        {invoice.paymentStatus}
+                      </span>
+                    </td>
+                    <td className="p-3.5 text-slate-700 whitespace-nowrap">
+                      {formatDate(invoice.dueDate)}
+                    </td>
+                    <td className="p-3.5 text-right">
+                      <button
+                        onClick={() => navigate(`/invoices/${invoice._id}`)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </DataTable>
             </div>
           )}
 
@@ -544,103 +535,78 @@ function CustomerProfile() {
                 </div>
               </div>
 
-              {quotationState.loading && (
-                <p>Loading quotations...</p>
-              )}
-
-              {quotationState.error && (
-                <div className="mb-4 rounded-lg bg-red-50 p-3 text-red-700">
-                  {quotationState.error}
-                </div>
-              )}
-
-              {!quotationState.loading &&
-                customerQuotations.length === 0 && (
-                  <div className="bg-slate-100 rounded-2xl p-8 text-center text-gray-500">
-                    No quotations found for this customer.
-                  </div>
-                )}
-
-              {customerQuotations.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full border">
-                    <thead className="bg-slate-100">
-                      <tr>
-                        <th className="text-left p-3">Quotation No</th>
-                        <th className="text-left p-3">Date</th>
-                        <th className="text-left p-3">Services / Treatments</th>
-                        <th className="text-left p-3">Total</th>
-                        <th className="text-left p-3">Status</th>
-                        <th className="text-left p-3">Action</th>
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {customerQuotations.map((quotation) => (
-                        <tr key={quotation._id} className="border-t">
-                          <td className="p-3 font-medium">
-                            <div className="flex items-center gap-1.5">
-                              <span>{quotation.quotationNumber}</span>
-                              <span
-                                className={`rounded px-1.5 py-0.5 text-xs font-semibold ${
-                                  quotation.quotationType === "ATT"
-                                    ? "bg-amber-100 text-amber-800"
-                                    : "bg-blue-100 text-blue-800"
-                                }`}
-                              >
-                                {quotation.quotationType || "PC"}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            {formatDate(quotation.quotationDate)}
-                          </td>
-                          <td className="p-3">
-                            {quotation.quotationType === "ATT"
-                              ? `${quotation.treatments?.length || 0} treatments`
-                              : `${quotation.services?.length || 0} services`}
-                          </td>
-                          <td className="p-3">
-                            {quotation.quotationType === "ATT"
-                              ? "-"
-                              : `₹${getQuotationTotal(quotation).toLocaleString("en-IN", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}`}
-                          </td>
-                          <td className="p-3">
-                            <span
-                              className={`rounded-full px-3 py-1 text-sm ${
-                                quotation.status === "Accepted"
-                                  ? "bg-green-100 text-green-700"
-                                  : quotation.status === "Rejected"
-                                    ? "bg-red-100 text-red-700"
-                                    : quotation.status === "Sent"
-                                      ? "bg-blue-100 text-blue-700"
-                                      : "bg-gray-100 text-gray-700"
-                              }`}
-                            >
-                              {quotation.status}
-                            </span>
-                          </td>
-                          <td className="p-3">
-                            <button
-                              onClick={() =>
-                                navigate(
-                                  `/quotations/${quotation._id}`,
-                                )
-                              }
-                              className="bg-blue-600 text-white px-3 py-1 rounded-lg"
-                            >
-                              View
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              <DataTable
+                headers={[
+                  { key: "qNo", label: "Quotation No", width: "20%" },
+                  { key: "date", label: "Date", width: "15%" },
+                  { key: "services", label: "Services / Treatments", width: "25%" },
+                  { key: "total", label: "Total", width: "18%" },
+                  { key: "status", label: "Status", width: "14%" },
+                  { key: "action", label: "Action", width: "8%" },
+                ]}
+                loading={quotationState.loading}
+                error={quotationState.error}
+                emptyMessage="No quotations found for this customer."
+                minWidth="min-w-[700px]"
+              >
+                {customerQuotations.map((quotation) => (
+                  <tr key={quotation._id} className="border-t border-slate-100 hover:bg-slate-50 transition">
+                    <td className="p-3.5 font-semibold text-slate-900">
+                      <div className="flex items-center gap-1.5">
+                        <TooltipCell value={quotation.quotationNumber} maxWidth="max-w-[130px]" />
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                            quotation.quotationType === "ATT"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-blue-100 text-blue-800"
+                          }`}
+                        >
+                          {quotation.quotationType || "PC"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="p-3.5 text-slate-700 whitespace-nowrap">
+                      {formatDate(quotation.quotationDate)}
+                    </td>
+                    <td className="p-3.5 text-slate-700 font-medium">
+                      {quotation.quotationType === "ATT"
+                        ? `${quotation.treatments?.length || 0} treatments`
+                        : `${quotation.services?.length || 0} services`}
+                    </td>
+                    <td className="p-3.5 font-semibold text-slate-900 whitespace-nowrap">
+                      {quotation.quotationType === "ATT"
+                        ? "-"
+                        : `₹${getQuotationTotal(quotation).toLocaleString("en-IN", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}`}
+                    </td>
+                    <td className="p-3.5">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${
+                          quotation.status === "Accepted"
+                            ? "bg-green-100 text-green-700"
+                            : quotation.status === "Rejected"
+                              ? "bg-red-100 text-red-700"
+                              : quotation.status === "Sent"
+                                ? "bg-blue-100 text-blue-700"
+                                : "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {quotation.status}
+                      </span>
+                    </td>
+                    <td className="p-3.5 text-right">
+                      <button
+                        onClick={() => navigate(`/quotations/${quotation._id}`)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer transition"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </DataTable>
             </div>
           )}
 

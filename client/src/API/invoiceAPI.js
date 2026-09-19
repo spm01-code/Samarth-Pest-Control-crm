@@ -1,5 +1,5 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const API_URL = `${BASE_URL}/api/invoices`;
+import { BASE_URL } from "./apiConfig";
+const API_URL = `${BASE_URL}/invoices`;
 
 export const createInvoiceAPI = async (
   invoiceData,

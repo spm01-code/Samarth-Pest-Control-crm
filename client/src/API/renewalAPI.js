@@ -1,7 +1,7 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { BASE_URL as API_URL } from "./apiConfig";
 
 const request = async (path, token, options = {}) => {
-  const response = await fetch(`${API_URL}/api/renewals${path}`, {
+  const response = await fetch(`${API_URL}/renewals${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${token}`,

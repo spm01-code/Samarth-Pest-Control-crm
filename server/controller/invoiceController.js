@@ -95,7 +95,8 @@ export const createInvoice = async (req, res) => {
   try {
     const {
       customerId,
-      services,
+      services = [],
+      customServices = [],
       invoiceType = "GST",
 
       workOrderNumber,
@@ -133,10 +134,15 @@ export const createInvoice = async (req, res) => {
       });
     }
 
-    if (!Array.isArray(services) || services.length === 0) {
+    const validServices = Array.isArray(services) ? services.filter(id => mongoose.isValidObjectId(id)) : [];
+    const validCustomServices = Array.isArray(customServices)
+      ? customServices.filter(cs => cs && cs.serviceName && Number(cs.amount) >= 0)
+      : [];
+
+    if (validServices.length === 0 && validCustomServices.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "At least one service is required",
+        message: "At least one service (existing or custom) is required",
       });
     }
 
@@ -149,22 +155,31 @@ export const createInvoice = async (req, res) => {
       });
     }
 
-    const serviceDocs = await Service.find({
-      _id: { $in: services },
-      customer: customerId,
-    });
+    const serviceDocs = validServices.length > 0
+      ? await Service.find({
+          _id: { $in: validServices },
+          customer: customerId,
+        })
+      : [];
 
-    if (serviceDocs.length !== services.length) {
+    if (validServices.length > 0 && serviceDocs.length !== validServices.length) {
       return res.status(400).json({
         success: false,
         message: "One or more selected services do not belong to this customer",
       });
     }
 
-    const subtotal = serviceDocs.reduce(
+    const existingSubtotal = serviceDocs.reduce(
       (sum, service) => sum + service.amount,
       0,
     );
+
+    const customSubtotal = validCustomServices.reduce(
+      (sum, cs) => sum + Number(cs.amount || 0),
+      0,
+    );
+
+    const subtotal = existingSubtotal + customSubtotal;
 
     if (!["GST", "NON_GST"].includes(invoiceType)) {
       return res
@@ -206,6 +221,13 @@ export const createInvoice = async (req, res) => {
       customer: customer._id,
 
       services: serviceDocs.map((service) => service._id),
+
+      customServices: validCustomServices.map((cs) => ({
+        serviceName: cs.serviceName,
+        amount: Number(cs.amount),
+        desc: cs.desc || "",
+        serviceDate: cs.serviceDate || new Date(),
+      })),
 
       workOrderNumber,
       workOrderDate,

@@ -7,6 +7,8 @@ import {
 } from "../slices/attendanceSlice";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import TooltipCell from "../Components/TooltipCell";
+import DataTable from "../Components/DataTable";
 
 const statusOptions = [
   {
@@ -263,93 +265,61 @@ function Attendance() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl shadow overflow-hidden">
-        {loading ? (
-          <div className="p-6">Loading attendance...</div>
-        ) : rows.length === 0 ? (
-          <div className="p-6">No active employees found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-slate-100 text-sm text-gray-600">
-                <tr>
-                  <th className="p-4">Employee Name</th>
-                  <th className="p-4">Employee Role</th>
-                  <th className="p-4">Attendance Status</th>
-                  <th className="p-4">Remarks</th>
-                </tr>
-              </thead>
+      <DataTable
+        headers={[
+          { key: "name", label: "Employee Name", width: "25%" },
+          { key: "role", label: "Employee Role", width: "18%" },
+          { key: "status", label: "Attendance Status", width: "32%" },
+          { key: "remarks", label: "Remarks", width: "25%" },
+        ]}
+        loading={loading}
+        emptyMessage="No active employees found."
+        minWidth="min-w-[850px]"
+      >
+        {rows.map((row) => (
+          <tr key={row.employee} className="border-t border-slate-100 hover:bg-slate-50 transition">
+            <td className="p-3.5 font-semibold text-slate-900">
+              <TooltipCell value={row.fullName} maxWidth="max-w-[220px]" />
+            </td>
 
-              <tbody>
-                {rows.map((row) => (
-                  <tr
-                    key={row.employee}
-                    className="border-t border-slate-100"
-                  >
-                    <td className="p-4 font-medium">
-                      {row.fullName}
-                    </td>
+            <td className="p-3.5 capitalize text-slate-700 font-medium">
+              {row.role || "-"}
+            </td>
 
-                    <td className="p-4 capitalize text-gray-600">
-                      {row.role}
-                    </td>
+            <td className="p-3.5">
+              <div className="flex flex-wrap gap-1.5">
+                {statusOptions.map((option) => {
+                  const isSelected = row.status === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      disabled={!editable}
+                      onClick={() => updateRowStatus(row.employee, option.value)}
+                      className={`px-2.5 py-1 rounded-full border text-xs font-semibold cursor-pointer transition ${
+                        isSelected ? option.activeClassName : option.className
+                      } ${!editable ? "cursor-not-allowed opacity-80" : ""}`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </td>
 
-                    <td className="p-4">
-                      <div className="flex flex-wrap gap-2">
-                        {statusOptions.map((option) => {
-                          const isSelected =
-                            row.status === option.value;
-
-                          return (
-                            <button
-                              key={option.value}
-                              type="button"
-                              disabled={!editable}
-                              onClick={() =>
-                                updateRowStatus(
-                                  row.employee,
-                                  option.value
-                                )
-                              }
-                              className={`px-3 py-1 rounded-full border text-sm font-medium ${
-                                isSelected
-                                  ? option.activeClassName
-                                  : option.className
-                              } ${
-                                !editable
-                                  ? "cursor-not-allowed opacity-80"
-                                  : ""
-                              }`}
-                            >
-                              {option.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </td>
-
-                    <td className="p-4">
-                      <input
-                        type="text"
-                        value={row.remarks}
-                        disabled={!editable}
-                        onChange={(e) =>
-                          updateRowRemarks(
-                            row.employee,
-                            e.target.value
-                          )
-                        }
-                        placeholder="Optional"
-                        className="w-full min-w-48 border rounded-lg px-3 py-2 disabled:bg-slate-100"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+            <td className="p-3.5">
+              <input
+                type="text"
+                value={row.remarks}
+                disabled={!editable}
+                onChange={(e) => updateRowRemarks(row.employee, e.target.value)}
+                placeholder="Optional remarks..."
+                className="w-full max-w-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:bg-white focus:border-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              />
+            </td>
+          </tr>
+        ))}
+      </DataTable>
     </div>
   );
 }

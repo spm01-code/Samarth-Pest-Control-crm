@@ -10,6 +10,8 @@ import {
   isMultiDateFrequency,
   calculateServiceDates,
 } from "../utils/serviceDateCalculator";
+import TooltipCell from "../Components/TooltipCell";
+import DataTable from "../Components/DataTable";
 
 function Services() {
   const dispatch = useDispatch();
@@ -194,108 +196,88 @@ function Services() {
       </div>
 
       {/* Services List Table */}
-      <div className="space-y-4">
-        {loading ? (
-          <div className="bg-white rounded-xl shadow-sm p-6 text-center text-gray-500">
-            Loading...
-          </div>
-        ) : error ? (
-          <div className="bg-red-100 text-red-600 p-4 rounded-lg mb-6">
-            {error}
-          </div>
-        ) : filteredServices.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-10 text-center text-gray-500">
-            No Services Found
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px]">
-                <thead className="bg-slate-100">
-                  <tr>
-                    <th className="text-left p-4">Customer</th>
-                    <th className="text-left p-4">Service Name</th>
-                    <th className="text-left p-4">Frequency</th>
-                    <th className="text-left p-4">Assigned To</th>
-                    <th className="text-left p-4">Service Date</th>
-                    <th className="text-left p-4">Next Service Date</th>
-                    <th className="text-left p-4">Amount</th>
-                    <th className="text-left p-4">Status</th>
-                  </tr>
-                </thead>
+      <DataTable
+        headers={[
+          { key: "customer", label: "Customer", width: "18%" },
+          { key: "service", label: "Service Name", width: "18%" },
+          { key: "freq", label: "Frequency", width: "12%" },
+          { key: "assigned", label: "Assigned To", width: "15%" },
+          { key: "date", label: "Service Date", width: "11%" },
+          { key: "nextDate", label: "Next Date", width: "14%" },
+          { key: "amount", label: "Amount", width: "10%" },
+          { key: "status", label: "Status", width: "10%" },
+        ]}
+        loading={loading}
+        error={error}
+        emptyMessage="No Services Found"
+        minWidth="min-w-[1100px]"
+      >
+        {filteredServices.map((service) => (
+          <tr
+            key={service._id}
+            className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer transition"
+            onClick={() => navigate(`/services/${service._id}`)}
+          >
+            <td className="p-3.5 font-medium text-slate-900">
+              <TooltipCell value={service.customer?.fullName} maxWidth="max-w-[180px]" />
+            </td>
 
-                <tbody>
-                  {filteredServices.map((service) => (
-                    <tr
-                      key={service._id}
-                      className="border-t hover:bg-slate-50 cursor-pointer transition"
-                      onClick={() => navigate(`/services/${service._id}`)}
+            <td className="p-3.5 font-medium text-slate-700">
+              <TooltipCell value={service.serviceName} maxWidth="max-w-[180px]" />
+            </td>
+
+            <td className="p-3.5 capitalize text-slate-600">
+              {service.frequency || "-"}
+            </td>
+
+            <td className="p-3.5 text-slate-700">
+              <TooltipCell value={service.employee?.fullName || service.operatorName} maxWidth="max-w-[150px]" />
+            </td>
+
+            <td className="p-3.5 text-slate-700 whitespace-nowrap">
+              {formatDate(service.serviceDate)}
+            </td>
+
+            <td className="p-3.5 text-slate-700">
+              {isMultiDateFrequency(service.frequency) ? (
+                <div className="flex flex-col gap-1 max-h-24 overflow-y-auto pr-1">
+                  {(Array.isArray(service.upcomingServiceDates) &&
+                  service.upcomingServiceDates.length > 0
+                    ? service.upcomingServiceDates
+                    : calculateServiceDates(
+                        service.serviceDate,
+                        service.frequency
+                      ).upcomingServiceDates
+                  ).map((d, idx) => (
+                    <span
+                      key={idx}
+                      className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md inline-block whitespace-nowrap"
                     >
-                      <td className="p-4 font-medium">
-                        {service.customer?.fullName || "N/A"}
-                      </td>
-
-                      <td className="p-4 font-medium text-slate-700">
-                        {service.serviceName || "-"}
-                      </td>
-
-                      <td className="p-4 capitalize">
-                        {service.frequency || "-"}
-                      </td>
-
-                      <td className="p-4">
-                        {service.employee?.fullName || service.operatorName || "-"}
-                      </td>
-
-                      <td className="p-4">
-                        {formatDate(service.serviceDate)}
-                      </td>
-
-                      <td className="p-4">
-                        {isMultiDateFrequency(service.frequency) ? (
-                          <div className="flex flex-col gap-1 max-h-24 overflow-y-auto pr-1">
-                            {(Array.isArray(service.upcomingServiceDates) &&
-                            service.upcomingServiceDates.length > 0
-                              ? service.upcomingServiceDates
-                              : calculateServiceDates(
-                                  service.serviceDate,
-                                  service.frequency
-                                ).upcomingServiceDates
-                            ).map((d, idx) => (
-                              <span
-                                key={idx}
-                                className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md inline-block whitespace-nowrap"
-                              >
-                                {formatDate(d)}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          formatDate(service.nextServiceDate)
-                        )}
-                      </td>
-
-                      <td className="p-4">
-                        Rs. {service.amount?.toLocaleString() || "0"}
-                      </td>
-
-                      <td className="p-4">
-                        <span
-                          className={`px-3 py-1 rounded-full text-sm font-medium capitalize ${getStatusColor(
-                            service.status
-                          )}`}
-                        >
-                          {service.status}
-                        </span>
-                      </td>
-                    </tr>
+                      {formatDate(d)}
+                    </span>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
+                </div>
+              ) : (
+                <span className="whitespace-nowrap">{formatDate(service.nextServiceDate)}</span>
+              )}
+            </td>
+
+            <td className="p-3.5 font-semibold text-slate-900 whitespace-nowrap">
+              Rs. {service.amount?.toLocaleString() || "0"}
+            </td>
+
+            <td className="p-3.5">
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-medium capitalize whitespace-nowrap ${getStatusColor(
+                  service.status
+                )}`}
+              >
+                {service.status}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
 
       {showCreateModal && (
         <CreateServiceModal onClose={() => setShowCreateModal(false)} />

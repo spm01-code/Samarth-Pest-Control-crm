@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FaArrowLeft } from "react-icons/fa";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router-dom";
+import { BASE_URL } from "../API/apiConfig";
 import { deleteRenewal, fetchRenewalById } from "../slices/renewalSlice";
 import DocumentPreviewModal from "../Components/DocumentPreviewModal";
 import CreateRenewalModal from "../Components/CreateRenewalModal";
@@ -280,11 +281,11 @@ function RenewalDetails() {
         onClose={() => setShowPreview(false)}
         title="Preview"
         iframeId="renewal-preview-iframe"
-        iframeSrc={`${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/renewals/${id}/pdf?token=${token}`}
+        iframeSrc={`${BASE_URL}/renewals/${id}/pdf?token=${token}`}
         iframeTitle="Contract Renewal PDF Preview"
         onPrint={() => {
           window.open(
-            `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api/renewals/${id}/pdf?token=${token}`,
+            `${BASE_URL}/renewals/${id}/pdf?token=${token}`,
             "_blank"
           );
         }}

@@ -9,12 +9,14 @@ const __dirname = path.dirname(__filename);
 const sendMail = async (email, otp, purpose = "REGISTRATION") => {
   try {
     if (!process.env.RESEND_API_KEY) {
-      throw new Error("RESEND_API_KEY must be set in server/.env");
+      console.error(`[Email Config Error] Operation: ${purpose} | RESEND_API_KEY environment variable is not configured`);
+      throw new Error("RESEND_API_KEY must be set in environment variables");
     }
 
     let mailFrom = process.env.OTP_FROM_EMAIL;
     if (process.env.NODE_ENV === "production" && !mailFrom) {
-      throw new Error("OTP_FROM_EMAIL must be set in server/.env in production");
+      console.error(`[Email Config Error] Operation: ${purpose} | OTP_FROM_EMAIL environment variable is not configured in production`);
+      throw new Error("OTP_FROM_EMAIL must be set in environment variables in production");
     }
     if (!mailFrom) {
       mailFrom = process.env.MAIL_FROM || "Samarth Pest Management <onboarding@resend.dev>";
@@ -29,17 +31,12 @@ const sendMail = async (email, otp, purpose = "REGISTRATION") => {
     try {
       logoBuffer = fs.readFileSync(logoPath);
     } catch (err) {
-      console.warn("Logo file not found, sending email without it:", err.message);
+      console.warn("[Email Warning] Logo file not found, using fallback logo URL");
     }
 
-    const attachments = [];
-    if (logoBuffer) {
-      attachments.push({
-        filename: "logo.png",
-        content: logoBuffer,
-        contentId: "logo",
-      });
-    }
+    const logoSrc = logoBuffer
+      ? `data:image/png;base64,${logoBuffer.toString("base64")}`
+      : "https://spmdashboard.cloud/logo.png";
 
     const isPasswordChange = purpose === "PASSWORD_CHANGE";
     const subject = isPasswordChange
@@ -58,10 +55,13 @@ const sendMail = async (email, otp, purpose = "REGISTRATION") => {
       ? "If you did not request this password change, you can safely ignore this email. Your password will remain unchanged."
       : "If you did not request this verification email, please secure your account credentials or ignore this email.";
 
+    const plainTextBody = `${titleText}\n\n${messageText}\n\nYour Verification Code: ${otp}\n\nThis code will expire in ${expiryMinutes} minutes. For security reasons, please do not share this OTP with anyone.\n\n© ${currentYear} Samarth Pest Management. All rights reserved.`;
+
     const { data, error } = await resend.emails.send({
       from: mailFrom,
       to: [email],
       subject,
+      text: plainTextBody,
       html: `
         <!DOCTYPE html>
         <html>
@@ -87,7 +87,7 @@ const sendMail = async (email, otp, purpose = "REGISTRATION") => {
                       <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 24px;">
                         <tr>
                           <td align="center">
-                            <img src="cid:logo" alt="Samarth Pest Management" style="max-height: 64px; max-width: 140px; object-fit: contain; display: block;" />
+                            <img src="${logoSrc}" alt="Samarth Pest Management" style="max-height: 64px; max-width: 140px; object-fit: contain; display: block; border: 0;" />
                           </td>
                         </tr>
                       </table>
@@ -148,19 +148,27 @@ const sendMail = async (email, otp, purpose = "REGISTRATION") => {
         </body>
         </html>
       `,
-      attachments,
     });
 
     if (error) {
-      console.error("Resend API Error details:", error.message || error);
-      throw new Error(error.message || "Resend API returned an error");
+      const statusCode = error.statusCode || error.status || "N/A";
+      const errorType = error.name || error.type || "ResendError";
+      const errorMsg = error.message || "Unknown email service error";
+      console.error(`[Email Provider Error] Operation: ${purpose} | Status: ${statusCode} | Type: ${errorType} | Details: ${errorMsg}`);
+      
+      const emailErr = new Error(errorMsg);
+      emailErr.statusCode = statusCode;
+      emailErr.type = errorType;
+      throw emailErr;
     }
 
-    console.log("Email Sent Successfully via Resend:", data?.id || "Sent");
+    console.log(`[Email Success] Operation: ${purpose} | Email ID: ${data?.id || "Sent"}`);
     return data;
   } catch (error) {
-    console.error("Email Error:", error.message || "Email sending failed");
-    throw new Error(error.message || "Failed to send email");
+    if (!error.type && !error.message.includes("[Email")) {
+      console.error(`[Email Failure] Operation: ${purpose} | Message: ${error.message || "Email sending failed"}`);
+    }
+    throw error;
   }
 };
 
