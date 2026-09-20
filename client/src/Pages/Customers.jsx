@@ -80,7 +80,7 @@ function Customers() {
             label: "Commercial",
             count: customerList.filter((c) => c.customerType === "commercial").length,
             color: "text-blue-700",
-            background: "bg-blue-50 border-blue-100",
+            background: "bg-red-900 border-blue-100",
           },
         ].map((card) => (
           <button
