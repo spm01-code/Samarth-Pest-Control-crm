@@ -194,16 +194,21 @@ const getActiveTemplate = async (documentType) => {
 
   const rawPath = template.filePath;
   const normalizedFilePath = rawPath ? rawPath.replace(/\\/g, "/") : "";
-  const fileName = template.fileName || path.basename(normalizedFilePath);
+  const diskFileName = path.basename(normalizedFilePath);
+  const userFileName = template.fileName || diskFileName;
 
   const candidatePaths = [
     rawPath,
     normalizedFilePath,
     path.resolve(process.cwd(), normalizedFilePath),
-    path.resolve(process.cwd(), "uploads", "templates", fileName),
-    path.resolve(process.cwd(), "templates", fileName),
-    path.resolve(process.cwd(), "server", "uploads", "templates", fileName),
-    path.resolve(process.cwd(), "server", "templates", fileName),
+    path.resolve(process.cwd(), "uploads", "templates", diskFileName),
+    path.resolve(process.cwd(), "server", "uploads", "templates", diskFileName),
+    path.resolve(process.cwd(), "templates", diskFileName),
+    path.resolve(process.cwd(), "server", "templates", diskFileName),
+    path.resolve(process.cwd(), "uploads", "templates", userFileName),
+    path.resolve(process.cwd(), "server", "uploads", "templates", userFileName),
+    path.resolve(process.cwd(), "templates", userFileName),
+    path.resolve(process.cwd(), "server", "templates", userFileName),
   ];
 
   const resolvedPath = candidatePaths.find(
