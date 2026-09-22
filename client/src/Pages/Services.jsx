@@ -9,6 +9,7 @@ import { FaPlus, FaSearch } from "react-icons/fa";
 import {
   isMultiDateFrequency,
   calculateServiceDates,
+  normalizeFrequency,
 } from "../utils/serviceDateCalculator";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
@@ -55,7 +56,7 @@ function Services() {
     const matchesFrequency =
       frequencyFilter === "all"
         ? true
-        : service.frequency?.toLowerCase() === frequencyFilter.toLowerCase();
+        : normalizeFrequency(service.frequency) === normalizeFrequency(frequencyFilter);
 
     return matchesSearch && matchesStatus && matchesFrequency;
   });
@@ -172,9 +173,9 @@ function Services() {
             { value: "weekly", label: "Weekly" },
             { value: "twice a week", label: "Twice a Week" },
             { value: "monthly", label: "Monthly" },
-            { value: "fourth night", label: "Fourth Night" },
+            { value: "Fourth nightly", label: "Fourth nightly" },
             { value: "Quarterly", label: "Quarterly" },
-            { value: "3 Services Yearly", label: "3 Services Yearly" },
+            { value: "Yearly 3 services", label: "Yearly 3 services" },
           ].map((frequency) => {
             const isActive = frequencyFilter === frequency.value;
             return (

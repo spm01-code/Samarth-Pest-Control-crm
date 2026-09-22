@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchService } from "../slices/serviceSlice";
 import EditServiceModal from "../Components/EditServiceModel";
+import CreateInvoiceModal from "../Components/CreateInvoiceModel";
 import DocumentPreviewModal from "../Components/DocumentPreviewModal";
 import { deleteService } from "../slices/serviceSlice";
 import { useNavigate } from "react-router-dom";
@@ -15,6 +16,7 @@ import {
 import { generateServicePaperHtml } from "../utils/servicePaperTemplate";
 import { getServiceDocxUrl, getServicePdfUrl } from "../API/serviceAPI";
 import { fetchCompanySettingsAPI } from "../API/companySettingAPI";
+import { fetchInvoiceByServiceIdAPI } from "../API/invoiceAPI";
 import { HiOutlineDocumentText } from "react-icons/hi2";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
@@ -25,15 +27,81 @@ function ServiceDetails() {
   const navigate = useNavigate();
 
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [companySettings, setCompanySettings] = useState(null);
 
-  const { service, loading } = useSelector((state) => state.services);
+  const [checkingInvoice, setCheckingInvoice] = useState(false);
+  const [existingInvoice, setExistingInvoice] = useState(null);
+  const [invoiceCheckError, setInvoiceCheckError] = useState(null);
+
+  const { service, serviceLoading } = useSelector((state) => state.services);
   const token = useSelector((state) => state.auth.token);
 
   useEffect(() => {
-    dispatch(fetchService(id));
+    if (id) {
+      dispatch(fetchService(id));
+    }
   }, [dispatch, id]);
+
+  const checkInvoiceStatus = async () => {
+    if (!service || !service._id || !token || isOneTimeJobService(service)) return;
+    setCheckingInvoice(true);
+    setInvoiceCheckError(null);
+    try {
+      const res = await fetchInvoiceByServiceIdAPI(service._id, token);
+      if (res.exists && res.invoice) {
+        setExistingInvoice(res.invoice);
+      } else {
+        setExistingInvoice(null);
+      }
+    } catch (err) {
+      console.error("Failed to check existing invoice:", err);
+      const errMsg = getErrorMessage(err, "Failed to check invoice status");
+      setInvoiceCheckError(errMsg);
+      toast.error(errMsg);
+    } finally {
+      setCheckingInvoice(false);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (service && service._id === id && token && !isOneTimeJobService(service)) {
+      setCheckingInvoice(true);
+      setInvoiceCheckError(null);
+
+      fetchInvoiceByServiceIdAPI(service._id, token)
+        .then((res) => {
+          if (!isMounted) return;
+          if (res.exists && res.invoice) {
+            setExistingInvoice(res.invoice);
+          } else {
+            setExistingInvoice(null);
+          }
+        })
+        .catch((err) => {
+          if (!isMounted) return;
+          console.error("Failed to check existing invoice:", err);
+          const errMsg = getErrorMessage(err, "Failed to check invoice status");
+          setInvoiceCheckError(errMsg);
+          toast.error(errMsg);
+        })
+        .finally(() => {
+          if (isMounted) {
+            setCheckingInvoice(false);
+          }
+        });
+    } else {
+      setCheckingInvoice(false);
+      setExistingInvoice(null);
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [service, id, token]);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -60,7 +128,9 @@ function ServiceDetails() {
     cancelled: "bg-gray-100 text-gray-700",
   };
 
-  if (loading) {
+  const isPageLoading = serviceLoading && (!service || service._id !== id);
+
+  if (isPageLoading) {
     return (
       <div className="flex justify-center items-center h-screen">
         Loading...
@@ -309,6 +379,49 @@ function ServiceDetails() {
       {/* Actions */}
 
       <div className="flex flex-wrap gap-4">
+        {/* Invoice Action (Only for eligible non-one-time job services) */}
+        {!isOneTimeJobService(service) && (
+          <>
+            {checkingInvoice ? (
+              <button
+                type="button"
+                disabled
+                className="bg-slate-200 text-slate-500 px-6 py-3 rounded-xl font-medium flex items-center gap-2 cursor-not-allowed opacity-80"
+              >
+                <HiOutlineDocumentText className="w-5 h-5 animate-pulse" />
+                Checking Invoice...
+              </button>
+            ) : invoiceCheckError ? (
+              <button
+                type="button"
+                onClick={checkInvoiceStatus}
+                className="bg-amber-100 text-amber-800 hover:bg-amber-200 px-6 py-3 rounded-xl font-medium flex items-center gap-2 cursor-pointer transition"
+              >
+                <HiOutlineDocumentText className="w-5 h-5" />
+                Retry Invoice Check
+              </button>
+            ) : existingInvoice ? (
+              <button
+                type="button"
+                onClick={() => navigate(`/invoices/${existingInvoice._id}`)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 cursor-pointer transition"
+              >
+                <HiOutlineDocumentText className="w-5 h-5" />
+                View Invoice
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowInvoiceModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 cursor-pointer transition"
+              >
+                <HiOutlineDocumentText className="w-5 h-5" />
+                Create Invoice
+              </button>
+            )}
+          </>
+        )}
+
         {isOneTimeJobService(service) && (
           <button
             type="button"
@@ -375,6 +488,22 @@ function ServiceDetails() {
         <EditServiceModal
           service={service}
           onClose={() => setShowEditModal(false)}
+        />
+      )}
+      {showInvoiceModal && (
+        <CreateInvoiceModal
+          isOpen={showInvoiceModal}
+          onClose={() => setShowInvoiceModal(false)}
+          initialCustomer={service.customer}
+          initialService={service}
+          onCreated={(createdInv) => {
+            const invId = createdInv?._id || createdInv?.invoice?._id;
+            if (invId) {
+              navigate(`/invoices/${invId}`);
+            } else {
+              checkInvoiceStatus();
+            }
+          }}
         />
       )}
     </div>

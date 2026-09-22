@@ -192,17 +192,28 @@ const getActiveTemplate = async (documentType) => {
     throw new Error("Template file path is missing");
   }
 
-  let resolvedPath = template.filePath;
-  if (!fs.existsSync(resolvedPath)) {
-    const fileName = path.basename(resolvedPath);
-    const localUploadsPath = path.resolve(process.cwd(), "uploads", "templates", fileName);
-    if (fs.existsSync(localUploadsPath)) {
-      resolvedPath = localUploadsPath;
-    } else {
-      throw new Error(
-        "The active template file could not be found on the server",
-      );
-    }
+  const rawPath = template.filePath;
+  const normalizedFilePath = rawPath ? rawPath.replace(/\\/g, "/") : "";
+  const fileName = template.fileName || path.basename(normalizedFilePath);
+
+  const candidatePaths = [
+    rawPath,
+    normalizedFilePath,
+    path.resolve(process.cwd(), normalizedFilePath),
+    path.resolve(process.cwd(), "uploads", "templates", fileName),
+    path.resolve(process.cwd(), "templates", fileName),
+    path.resolve(process.cwd(), "server", "uploads", "templates", fileName),
+    path.resolve(process.cwd(), "server", "templates", fileName),
+  ];
+
+  const resolvedPath = candidatePaths.find(
+    (candidate) => Boolean(candidate) && fs.existsSync(candidate)
+  );
+
+  if (!resolvedPath) {
+    throw new Error(
+      "The active template file could not be found on the server",
+    );
   }
 
   return {
@@ -1465,9 +1476,22 @@ export const generateOneTimeJobDocx = async (service) => {
 
     // Frequency formatting
     const rawFreq = String(service.frequency || "One Time Job").trim();
+    const rawLower = rawFreq.toLowerCase();
     const formattedFrequency =
-      rawFreq.toLowerCase() === "one-time"
+      rawLower === "one-time"
         ? "One Time Job"
+        : rawLower === "fourth night" ||
+          rawLower === "fourthnight" ||
+          rawLower === "fourth-night" ||
+          rawLower === "fourth nightly" ||
+          rawLower === "fourthnightly"
+        ? "Fourth nightly"
+        : rawLower === "3 services yearly" ||
+          rawLower === "3 service yearly" ||
+          rawLower === "3 yearly services" ||
+          rawLower === "3-yearly services" ||
+          rawLower === "yearly 3 services"
+        ? "Yearly 3 services"
         : rawFreq.charAt(0).toUpperCase() + rawFreq.slice(1);
 
     const data = {

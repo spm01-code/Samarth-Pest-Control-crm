@@ -64,9 +64,22 @@ export const generateServicePaperHtml = (service, companySettings = null) => {
   const locationOfPest = service?.locationOfPest || "-";
 
   const rawFreq = String(service?.frequency || "One Time Job").trim();
+  const rawLower = rawFreq.toLowerCase();
   const frequency =
-    rawFreq.toLowerCase() === "one-time"
+    rawLower === "one-time"
       ? "One Time Job"
+      : rawLower === "fourth night" ||
+        rawLower === "fourthnight" ||
+        rawLower === "fourth-night" ||
+        rawLower === "fourth nightly" ||
+        rawLower === "fourthnightly"
+      ? "Fourth nightly"
+      : rawLower === "3 services yearly" ||
+        rawLower === "3 service yearly" ||
+        rawLower === "3 yearly services" ||
+        rawLower === "3-yearly services" ||
+        rawLower === "yearly 3 services"
+      ? "Yearly 3 services"
       : rawFreq.charAt(0).toUpperCase() + rawFreq.slice(1);
 
   const serviceCharges = formatAmount(service?.amount);

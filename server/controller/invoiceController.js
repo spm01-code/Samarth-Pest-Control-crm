@@ -169,6 +169,27 @@ export const createInvoice = async (req, res) => {
       });
     }
 
+    // Duplicate Invoice Protection (Requirement 9 & 19):
+    // Re-check if an active invoice already exists for any of the selected services.
+    if (validServices.length > 0) {
+      const existingInvoice = await Invoice.findOne({
+        services: { $in: validServices },
+        isDeleted: false,
+      })
+        .populate("customer")
+        .populate("services")
+        .populate("generatedBy", "-password -refreshToken");
+
+      if (existingInvoice) {
+        return res.status(200).json({
+          success: true,
+          isExisting: true,
+          message: "An invoice already exists for this service",
+          invoice: existingInvoice,
+        });
+      }
+    }
+
     const existingSubtotal = serviceDocs.reduce(
       (sum, service) => sum + service.amount,
       0,
@@ -621,3 +642,48 @@ export const generateInvoicePdf = async (req, res) => {
     });
   }
 };
+
+// ==========================
+// GET INVOICE BY SERVICE ID
+// ==========================
+
+export const getInvoiceByServiceId = async (req, res) => {
+  try {
+    const { serviceId } = req.params;
+
+    if (!mongoose.isValidObjectId(serviceId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Service ID",
+      });
+    }
+
+    const invoice = await Invoice.findOne({
+      services: serviceId,
+      isDeleted: false,
+    })
+      .populate("customer")
+      .populate("services")
+      .populate("generatedBy", "-password -refreshToken");
+
+    if (!invoice) {
+      return res.status(200).json({
+        success: true,
+        exists: false,
+        invoice: null,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      exists: true,
+      invoice,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+

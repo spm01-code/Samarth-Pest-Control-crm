@@ -121,3 +121,27 @@ export const deleteInvoiceAPI = async (
 
   return data;
 };
+
+export const fetchInvoiceByServiceIdAPI = async (
+  serviceId,
+  token
+) => {
+  const response = await fetch(
+    `${API_URL}/service/${serviceId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      data.message || "Failed to check invoice for service"
+    );
+  }
+
+  return data;
+};

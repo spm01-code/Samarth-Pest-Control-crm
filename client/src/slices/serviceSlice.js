@@ -99,6 +99,7 @@ const serviceSlice = createSlice({
     services: [],
     service: null,
     loading: false,
+    serviceLoading: false,
     error: null,
   },
 
@@ -127,16 +128,16 @@ const serviceSlice = createSlice({
 
       // Fetch One
       .addCase(fetchService.pending, (state) => {
-        state.loading = true;
+        state.serviceLoading = true;
         state.error = null;
       })
       .addCase(fetchService.fulfilled, (state, action) => {
-        state.loading = false;
+        state.serviceLoading = false;
         state.service = action.payload;
         state.error = null;
       })
       .addCase(fetchService.rejected, (state, action) => {
-        state.loading = false;
+        state.serviceLoading = false;
         state.service = null;
         state.error = action.payload;
       })

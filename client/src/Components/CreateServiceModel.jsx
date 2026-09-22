@@ -266,9 +266,9 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
               <option value="weekly">Weekly</option>
               <option value="twice a week">Twice a Week</option>
               <option value="monthly">Monthly</option>
-              <option value="fourth night">Fourth Night</option>
+              <option value="Fourth nightly">Fourth nightly</option>
               <option value="Quarterly">Quarterly</option>
-              <option value="3 Services Yearly">3 Services Yearly</option>
+              <option value="Yearly 3 services">Yearly 3 services</option>
             </select>
           </div>
 

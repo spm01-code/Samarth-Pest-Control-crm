@@ -12,14 +12,17 @@ function CreateInvoiceModal({
   isOpen,
   onClose,
   initialCustomer = null,
+  initialService = null,
   onCreated,
 }) {
   const dispatch = useDispatch();
   const [showCustomers, setShowCustomers] = useState(false);
 
-  const [customerSearch, setCustomerSearch] = useState(
-    initialCustomer?.fullName || "",
-  );
+  const activeCustomer = initialCustomer || initialService?.customer;
+  const initialCustName = typeof activeCustomer === "object" ? activeCustomer?.fullName : "";
+  const initialCustId = typeof activeCustomer === "object" ? activeCustomer?._id : activeCustomer || "";
+
+  const [customerSearch, setCustomerSearch] = useState(initialCustName);
 
   const { customers = [] } = useSelector((state) => state.customer);
 
@@ -27,8 +30,8 @@ function CreateInvoiceModal({
 
   const [formData, setFormData] = useState({
     invoiceType: "GST",
-    customerId: initialCustomer?._id || "",
-    services: [],
+    customerId: initialCustId,
+    services: initialService?._id ? [initialService._id] : [],
     customServices: [],
     workOrderNumber: "",
     workOrderDate: "",
@@ -37,8 +40,8 @@ function CreateInvoiceModal({
       "Being Charges for pest management service rendered as details mentioned below.",
     billingPeriod: "",
     contractPeriod: "",
-    premisesTreated: "",
-    treatmentType: "",
+    premisesTreated: initialService?.address || "",
+    treatmentType: initialService?.serviceName || "",
     hsnCode: "",
     sacCode: "",
     amountInWords: "",
@@ -53,8 +56,30 @@ function CreateInvoiceModal({
     if (isOpen) {
       dispatch(fetchCustomers());
       dispatch(fetchServices());
+
+      const currentCustomer = initialCustomer || initialService?.customer;
+      const custId = typeof currentCustomer === "object" ? currentCustomer?._id : currentCustomer || "";
+      const custName = typeof currentCustomer === "object" ? currentCustomer?.fullName : "";
+
+      if (custName) {
+        setCustomerSearch(custName);
+      }
+
+      setFormData((prev) => {
+        const currentServiceIds = Array.isArray(prev.services) ? [...prev.services] : [];
+        if (initialService?._id && !currentServiceIds.includes(initialService._id)) {
+          currentServiceIds.push(initialService._id);
+        }
+        return {
+          ...prev,
+          customerId: custId || prev.customerId,
+          services: currentServiceIds,
+          premisesTreated: prev.premisesTreated || initialService?.address || "",
+          treatmentType: prev.treatmentType || initialService?.serviceName || "",
+        };
+      });
     }
-  }, [dispatch, isOpen]);
+  }, [dispatch, isOpen, initialCustomer, initialService]);
 
   const handleChange = (e) => {
     setFormData({
@@ -203,14 +228,14 @@ function CreateInvoiceModal({
     e.preventDefault();
 
     try {
-      await dispatch(
+      const res = await dispatch(
         createInvoice({
           ...formData,
           amountInWords: displayAmountInWords,
         }),
       ).unwrap();
 
-      onCreated?.();
+      onCreated?.(res?.invoice || res);
       onClose();
       toast.success("Invoice created successfully.");
     } catch (error) {
@@ -273,7 +298,7 @@ function CreateInvoiceModal({
                 setShowCustomers(value.trim() !== "");
               }}
               className="w-full border rounded-xl p-3"
-              disabled={Boolean(initialCustomer)}
+              disabled={Boolean(initialCustomer || initialService)}
               required
             />
 

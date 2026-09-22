@@ -61,19 +61,28 @@ export const normalizeFrequency = (freq) => {
   if (
     lower === "fourth night" ||
     lower === "fourthnight" ||
+    lower === "fourth-night" ||
+    lower === "fourth nightly" ||
+    lower === "fourthnightly" ||
     lower === "fortnight" ||
     lower === "fortnightly"
   ) {
-    return "fourth night";
+    return "Fourth nightly";
   }
   if (lower === "quarterly" || lower === "quarter") return "Quarterly";
   if (
     lower === "3 services yearly" ||
     lower === "3 service yearly" ||
     lower === "3 services" ||
-    lower === "three services yearly"
+    lower === "three services yearly" ||
+    lower === "3 yearly services" ||
+    lower === "3-yearly services" ||
+    lower === "3 yearly" ||
+    lower === "3-yearly" ||
+    lower === "yearly 3 services" ||
+    lower === "yearly 3 service"
   ) {
-    return "3 Services Yearly";
+    return "Yearly 3 services";
   }
 
   return trimmed;
@@ -89,6 +98,7 @@ export const isMultiDateFrequency = (frequency) => {
   const norm = normalizeFrequency(frequency);
   return (
     norm === "Quarterly" ||
+    norm === "Yearly 3 services" ||
     norm === "3 Services Yearly" ||
     norm === "twice a week"
   );
@@ -131,6 +141,7 @@ export const calculateServiceDates = (
       break;
     }
 
+    case "Fourth nightly":
     case "fourth night": {
       nextServiceDate = addDays(serviceDate, 14);
       upcomingServiceDates = [nextServiceDate];
@@ -159,6 +170,7 @@ export const calculateServiceDates = (
       break;
     }
 
+    case "Yearly 3 services":
     case "3 Services Yearly": {
       // 3 occurrences within 1 year: +4m, +8m, +12m
       const s1 = addMonthsClamped(serviceDate, 4);

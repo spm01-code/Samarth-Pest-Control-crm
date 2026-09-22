@@ -123,12 +123,11 @@ function Customers() {
       {!loading && !error && (
         <DataTable
           headers={[
-            { key: "name", label: "Customer", width: "22%" },
-            { key: "type", label: "Customer Type", width: "14%" },
-            { key: "phone", label: "Phone", width: "15%" },
-            { key: "email", label: "Email", width: "20%" },
-            { key: "address", label: "Address", width: "20%" },
-            { key: "status", label: "Status", width: "9%" },
+            { key: "name", label: "Customer", width: "25%" },
+            { key: "type", label: "Customer Type", width: "18%" },
+            { key: "phone", label: "Phone", width: "18%" },
+            { key: "address", label: "Address", width: "29%" },
+            { key: "status", label: "Status", width: "10%" },
           ]}
           loading={loading}
           error={error}
@@ -161,10 +160,6 @@ function Customers() {
 
               <td className="p-3.5 text-slate-700">
                 <TooltipCell value={customer.phone || customer.alternatePhone} maxWidth="max-w-[140px]" />
-              </td>
-
-              <td className="p-3.5 text-slate-700">
-                <TooltipCell value={customer.email} maxWidth="max-w-[190px]" />
               </td>
 
               <td className="p-3.5 text-slate-700">

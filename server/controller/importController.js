@@ -1487,12 +1487,12 @@ export const commitSession = async (req, res) => {
             } else if (targetEntity === "Service") {
               const parsedFreq = normalizeStr(rowData.frequency);
               let validFreq = "one-time";
-              if (parsedFreq.includes("3") || parsedFreq.includes("three")) validFreq = "3 Services Yearly";
+              if (parsedFreq.includes("3") || parsedFreq.includes("three")) validFreq = "Yearly 3 services";
               else if (parsedFreq.includes("twiceaweek") || parsedFreq.includes("twice")) validFreq = "twice a week";
               else if (parsedFreq.includes("week")) validFreq = "weekly";
               else if (parsedFreq.includes("month")) validFreq = "monthly";
               else if (parsedFreq.includes("quarter")) validFreq = "Quarterly";
-              else if (parsedFreq.includes("fourthnight") || parsedFreq.includes("fortnight")) validFreq = "fourth night";
+              else if (parsedFreq.includes("fourthnight") || parsedFreq.includes("fortnight") || parsedFreq.includes("fourth")) validFreq = "Fourth nightly";
 
               const serviceDateVal = parseExcelDate(rowData.serviceDate) || new Date();
               const { nextServiceDate: calcNext, upcomingServiceDates: calcUpcoming } = calculateServiceDates(serviceDateVal, validFreq);
@@ -1744,12 +1744,12 @@ export const commitSession = async (req, res) => {
               try {
                 const parsedFreq = normalizeStr(rowData.frequency);
                 let validFreq = "one-time";
-                if (parsedFreq.includes("3") || parsedFreq.includes("three")) validFreq = "3 Services Yearly";
+                if (parsedFreq.includes("3") || parsedFreq.includes("three")) validFreq = "Yearly 3 services";
                 else if (parsedFreq.includes("twiceaweek") || parsedFreq.includes("twice")) validFreq = "twice a week";
                 else if (parsedFreq.includes("week")) validFreq = "weekly";
                 else if (parsedFreq.includes("month")) validFreq = "monthly";
                 else if (parsedFreq.includes("quarter")) validFreq = "Quarterly";
-                else if (parsedFreq.includes("fourthnight") || parsedFreq.includes("fortnight")) validFreq = "fourth night";
+                else if (parsedFreq.includes("fourthnight") || parsedFreq.includes("fortnight") || parsedFreq.includes("fourth")) validFreq = "Fourth nightly";
 
                 const serviceDateVal = parseExcelDate(rowData.firstService) || parseExcelDate(rowData.secondService) || new Date();
                 const newService = new Service({
