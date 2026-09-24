@@ -134,10 +134,10 @@ export const getContractPeriodDates = (renewalDate) => {
 
 export const numberToWords = (amount) => {
   const ones = [
-    "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
-    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen",
+    "", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE",
+    "TEN", "ELEVEN", "TWELVE", "THIRTEEN", "FOURTEEN", "FIFTEEN", "SIXTEEN", "SEVENTEEN", "EIGHTEEN", "NINETEEN",
   ];
-  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const tens = ["", "", "TWENTY", "THIRTY", "FORTY", "FIFTY", "SIXTY", "SEVENTY", "EIGHTY", "NINETY"];
 
   const convertBelowHundred = (number) => {
     if (number < 20) return ones[number];
@@ -150,16 +150,19 @@ export const numberToWords = (amount) => {
     const hundred = Math.floor(number / 100);
     const rest = number % 100;
     if (hundred && rest) {
-      return `${ones[hundred]} Hundred ${convertBelowHundred(rest)}`;
+      return `${ones[hundred]} HUNDRED ${convertBelowHundred(rest)}`;
     }
     if (hundred) {
-      return `${ones[hundred]} Hundred`;
+      return `${ones[hundred]} HUNDRED`;
     }
     return convertBelowHundred(rest);
   };
 
-  const rupees = Math.round(Number(amount || 0));
-  if (rupees === 0) return "Zero";
+  const cleanAmount = Number(amount) || 0;
+  const rupees = Math.floor(cleanAmount);
+  const paise = Math.round((cleanAmount - rupees) * 100);
+
+  if (cleanAmount === 0) return "RUPEES ZERO ONLY";
 
   const crore = Math.floor(rupees / 10000000);
   const lakh = Math.floor((rupees % 10000000) / 100000);
@@ -167,12 +170,17 @@ export const numberToWords = (amount) => {
   const rest = rupees % 1000;
 
   let words = "";
-  if (crore) words += `${convertBelowThousand(crore)} Crore `;
-  if (lakh) words += `${convertBelowThousand(lakh)} Lakh `;
-  if (thousand) words += `${convertBelowThousand(thousand)} Thousand `;
+  if (crore) words += `${convertBelowThousand(crore)} CRORE `;
+  if (lakh) words += `${convertBelowThousand(lakh)} LAKH `;
+  if (thousand) words += `${convertBelowThousand(thousand)} THOUSAND `;
   if (rest) words += convertBelowThousand(rest);
 
-  return words.trim();
+  let result = `RUPEES ${words.trim()}`;
+  if (paise > 0) {
+    result += ` AND PAISA ${convertBelowHundred(paise)}`;
+  }
+  result += " ONLY";
+  return result;
 };
 
 /**
@@ -603,6 +611,57 @@ const buildRenewalServices = (renewal) => {
   });
 };
 
+const resolveCgstPercentage = (invoice) => {
+  const isGst = invoice?.invoiceType === "GST";
+  if (!isGst) return "0";
+
+  let pct = Number(invoice?.tax?.cgstPercentage || invoice?.cgstPercentage || 0);
+
+  if (!pct || pct === 0) {
+    const amount = Number(invoice?.tax?.cgstAmount || invoice?.cgstAmount || 0);
+    const sub = Number(invoice?.subtotal || 0);
+    if (amount > 0 && sub > 0) {
+      pct = Math.round((amount / sub) * 100 * 100) / 100;
+    }
+  }
+
+  return String(pct);
+};
+
+const resolveSgstPercentage = (invoice) => {
+  const isGst = invoice?.invoiceType === "GST";
+  if (!isGst) return "0";
+
+  let pct = Number(invoice?.tax?.sgstPercentage || invoice?.sgstPercentage || 0);
+
+  if (!pct || pct === 0) {
+    const amount = Number(invoice?.tax?.sgstAmount || invoice?.sgstAmount || 0);
+    const sub = Number(invoice?.subtotal || 0);
+    if (amount > 0 && sub > 0) {
+      pct = Math.round((amount / sub) * 100 * 100) / 100;
+    }
+  }
+
+  return String(pct);
+};
+
+const resolveIgstPercentage = (invoice) => {
+  const isGst = invoice?.invoiceType === "GST";
+  if (!isGst) return "0";
+
+  let pct = Number(invoice?.tax?.igstPercentage || invoice?.igstPercentage || 0);
+
+  if (!pct || pct === 0) {
+    const amount = Number(invoice?.tax?.igstAmount || invoice?.igstAmount || 0);
+    const sub = Number(invoice?.subtotal || 0);
+    if (amount > 0 && sub > 0) {
+      pct = Math.round((amount / sub) * 100 * 100) / 100;
+    }
+  }
+
+  return String(pct);
+};
+
 // ============================================================
 // 1. INVOICE DOCX GENERATOR
 // ============================================================
@@ -663,6 +722,10 @@ export const generateInvoiceDocx = async (invoice) => {
       ? companySettings?.gstAccountNumber || ""
       : companySettings?.nonGstAccountNumber || "";
 
+    const cgstPctStr = resolveCgstPercentage(invoice);
+    const sgstPctStr = resolveSgstPercentage(invoice);
+    const igstPctStr = resolveIgstPercentage(invoice);
+
     // ------------------------------------------------------
     // Data
     // ------------------------------------------------------
@@ -694,6 +757,14 @@ export const generateInvoiceDocx = async (invoice) => {
 
       gstNumber: isGstInvoice ? invoice.gstNumber || "" : "",
 
+      gstin: isGstInvoice ? invoice.gstNumber || "" : "",
+
+      GSTIN: isGstInvoice ? invoice.gstNumber || "" : "",
+
+      companyGstin: companySettings?.companyTaxId || "27BDMPM1204J1ZL",
+
+      companyGstNumber: companySettings?.companyTaxId || "27BDMPM1204J1ZL",
+
       gstCode: isGstInvoice ? getGstCode(invoice.gstNumber) : "",
 
       hsnCode: isGstInvoice ? invoice.hsnCode || "" : "",
@@ -715,27 +786,43 @@ export const generateInvoiceDocx = async (invoice) => {
 
       totalTax: formatAmount(invoice.totalTax),
 
-      cgstPercentage: isGstInvoice
-        ? Number(invoice.tax?.cgstPercentage || 0).toFixed(2)
-        : "0.00",
+      cgstPercentage: cgstPctStr,
 
-      cgstAmount: isGstInvoice ? formatAmount(invoice.tax?.cgstAmount) : "0.00",
+      cgstRate: cgstPctStr,
 
-      sgstPercentage: isGstInvoice
-        ? Number(invoice.tax?.sgstPercentage || 0).toFixed(2)
-        : "0.00",
+      cgstAmount: isGstInvoice ? formatAmount(invoice.tax?.cgstAmount || invoice.cgstAmount) : "0.00",
 
-      sgstAmount: isGstInvoice ? formatAmount(invoice.tax?.sgstAmount) : "0.00",
+      sgstPercentage: sgstPctStr,
 
-      igstPercentage: isGstInvoice
-        ? Number(invoice.tax?.igstPercentage || 0).toFixed(2)
-        : "0.00",
+      sgstRate: sgstPctStr,
 
-      igstAmount: isGstInvoice ? formatAmount(invoice.tax?.igstAmount) : "0.00",
+      sgstAmount: isGstInvoice ? formatAmount(invoice.tax?.sgstAmount || invoice.sgstAmount) : "0.00",
+
+      igstPercentage: igstPctStr,
+
+      igstRate: igstPctStr,
+
+      igstAmount: isGstInvoice ? formatAmount(invoice.tax?.igstAmount || invoice.igstAmount) : "0.00",
 
       totalAmount: formatAmount(invoice.totalAmount),
 
-      amountInWords: invoice.amountInWords || "",
+      amountInWords:
+        invoice.amountInWords?.trim() ||
+        (invoice.totalAmount !== undefined && invoice.totalAmount !== null
+          ? numberToWords(invoice.totalAmount)
+          : ""),
+
+      amountWords:
+        invoice.amountInWords?.trim() ||
+        (invoice.totalAmount !== undefined && invoice.totalAmount !== null
+          ? numberToWords(invoice.totalAmount)
+          : ""),
+
+      totalAmountInWords:
+        invoice.amountInWords?.trim() ||
+        (invoice.totalAmount !== undefined && invoice.totalAmount !== null
+          ? numberToWords(invoice.totalAmount)
+          : ""),
 
       paymentStatus: invoice.paymentStatus || "",
 

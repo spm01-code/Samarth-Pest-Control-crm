@@ -283,12 +283,6 @@ function RenewalDetails() {
         iframeId="renewal-preview-iframe"
         iframeSrc={`${BASE_URL}/renewals/${id}/pdf?token=${token}`}
         iframeTitle="Contract Renewal PDF Preview"
-        onPrint={() => {
-          window.open(
-            `${BASE_URL}/renewals/${id}/pdf?token=${token}`,
-            "_blank"
-          );
-        }}
       />
 
       {showEditModal && (

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -27,6 +27,10 @@ function DocumentPreviewModal({
 }) {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -77,6 +81,49 @@ function DocumentPreviewModal({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    let isMounted = true;
+    let activeObjectUrl = null;
+
+    if (isOpen && iframeSrc) {
+      setIsLoading(true);
+      setError(null);
+      setPdfBlobUrl(null);
+
+      fetch(iframeSrc)
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP error ${response.status}`);
+          }
+          return response.blob();
+        })
+        .then((blob) => {
+          if (!isMounted) return;
+          const objectUrl = URL.createObjectURL(blob);
+          activeObjectUrl = objectUrl;
+          setPdfBlobUrl(objectUrl);
+          setIsLoading(false);
+        })
+        .catch((err) => {
+          if (!isMounted) return;
+          console.error("PDF preview fetch error:", err);
+          setError("Unable to load PDF preview. Please try again.");
+          setIsLoading(false);
+        });
+    } else {
+      setIsLoading(false);
+      setError(null);
+      setPdfBlobUrl(null);
+    }
+
+    return () => {
+      isMounted = false;
+      if (activeObjectUrl) {
+        URL.revokeObjectURL(activeObjectUrl);
+      }
+    };
+  }, [isOpen, iframeSrc]);
+
   if (!isOpen) return null;
 
   const handlePrintClick = () => {
@@ -98,8 +145,9 @@ function DocumentPreviewModal({
       }
     }
 
-    if (iframeSrc) {
-      window.open(iframeSrc, "_blank");
+    const printTarget = pdfBlobUrl || iframeSrc;
+    if (printTarget) {
+      window.open(printTarget, "_blank");
     }
   };
 
@@ -153,13 +201,58 @@ function DocumentPreviewModal({
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 bg-[#525659] p-2 sm:p-4 overflow-auto flex justify-center">
-          {children ? (
+        <div className="flex-1 bg-[#525659] p-2 sm:p-4 overflow-auto flex items-center justify-center relative">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center text-white space-y-3 p-6">
+              <svg
+                className="animate-spin h-8 w-8 text-blue-400"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                ></circle>
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              <p className="text-sm font-medium text-slate-200">
+                Loading PDF preview...
+              </p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center text-white space-y-3 p-6 text-center">
+              <div className="rounded-full bg-red-500/20 p-3 text-red-400">
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-slate-200">{error}</p>
+            </div>
+          ) : children ? (
             children
           ) : (
             <iframe
               id={iframeId}
-              src={iframeSrc || undefined}
+              src={pdfBlobUrl || iframeSrc || undefined}
               srcDoc={iframeSrcDoc || undefined}
               className={iframeClassName}
               title={iframeTitle}

@@ -3,20 +3,24 @@ import { FaPlus } from "react-icons/fa";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import CreateRenewalModal from "../Components/CreateRenewalModal";
+import DocumentPreviewModal from "../Components/DocumentPreviewModal";
 import { deleteRenewal, fetchRenewals } from "../slices/renewalSlice";
 import { HiOutlineEye, HiOutlinePrinter, HiOutlineTrash } from "react-icons/hi2";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
+import { BASE_URL } from "../API/apiConfig";
 
 function Renewals() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [previewRenewalId, setPreviewRenewalId] = useState(null);
 
   const { renewals = [], loading, error } = useSelector((state) => state.renewal);
+  const token = useSelector((state) => state.auth.token);
 
   useEffect(() => {
     dispatch(fetchRenewals());
@@ -136,9 +140,9 @@ function Renewals() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate(`/renewals/${renewal._id}/print`)}
+                  onClick={() => setPreviewRenewalId(renewal._id)}
                   className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-200 hover:border-slate-300 cursor-pointer"
-                  title="Print Renewal"
+                  title="Print Renewal PDF"
                 >
                   <HiOutlinePrinter className="size-3.5 shrink-0" />
                 </button>
@@ -156,6 +160,14 @@ function Renewals() {
         ))}
       </DataTable>
       <CreateRenewalModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
+      <DocumentPreviewModal
+        isOpen={Boolean(previewRenewalId)}
+        onClose={() => setPreviewRenewalId(null)}
+        title="Preview"
+        iframeId="renewal-table-preview-iframe"
+        iframeSrc={previewRenewalId ? `${BASE_URL}/renewals/${previewRenewalId}/pdf?token=${token}` : null}
+        iframeTitle="Contract Renewal PDF Preview"
+      />
     </div>
   );
 }

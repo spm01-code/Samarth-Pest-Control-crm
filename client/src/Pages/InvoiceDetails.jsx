@@ -8,7 +8,6 @@ import { useNavigate } from "react-router-dom";
 import EditInvoiceModal from "../Components/EditInvoiceModel";
 import DocumentPreviewModal from "../Components/DocumentPreviewModal";
 import { FaArrowLeft } from "react-icons/fa";
-import { generateInvoiceHtml } from "../utils/invoiceTemplate";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 
@@ -49,22 +48,6 @@ function InvoiceDetails() {
     if (!date) return "-";
 
     return new Date(date).toLocaleDateString("en-IN");
-  };
-
-  const formatAmount = (amount) => {
-    return Number(amount || 0).toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
-
-  const safeText = (value) => {
-    return String(value || "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
   };
 
   const numberToWords = (amount) => {
@@ -145,97 +128,6 @@ function InvoiceDetails() {
     if (rest) words += convertBelowThousand(rest);
 
     return words.trim();
-  };
-
-  const getServiceRows = () => {
-    const allServices = [
-      ...(invoice.services || []),
-      ...(invoice.customServices || []),
-    ];
-
-    if (allServices.length === 0) {
-      return '<div class="service-detail">-</div>';
-    }
-
-    return allServices
-      .map((service) => {
-        const serviceBits = [
-          formatDate(service.serviceDate),
-          service.desc ? safeText(service.desc) : "",
-        ].filter(Boolean);
-
-        return `
-          <div class="service-detail">
-            <strong>${safeText(service.serviceName || "SERVICE")}</strong>${
-              serviceBits.length ? `: ${serviceBits.join(" - ")}` : ""
-            }
-          </div>
-        `;
-      })
-      .join("");
-  };
-
-  const formatAddress = (address) => {
-    return safeText(address || "-")
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .map((line) => `<div>${line}</div>`)
-      .join("");
-  };
-
-  const printInvoice = () => {
-    const printWindow = window.open(
-      `/invoices/${id}/print`,
-      "_blank",
-      "noopener,noreferrer",
-    );
-
-    if (!printWindow) {
-      printInvoiceLegacy();
-    }
-  };
-
-  const printInvoiceLegacy = () => {
-    const printWindow = window.open("", "_blank");
-
-    if (!printWindow) {
-      toast.warning("Please allow popups to print this invoice.");
-      return;
-    }
-
-    // Load company settings from localStorage if available
-    let companySettings = null;
-    try {
-      const saved = localStorage.getItem("crm_settings_account");
-      if (saved) {
-        companySettings = JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error("Error reading company settings:", e);
-    }
-
-    const innerHtml = generateInvoiceHtml(invoice, companySettings, window.location.origin);
-
-    const invoiceHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${safeText(invoice.invoiceNumber)} PDF</title>
-        </head>
-        <body style="margin: 0; padding: 0;">
-          ${innerHtml}
-          <script>
-            window.onload = function () {
-              window.print();
-            };
-          </script>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.open();
-    printWindow.document.write(invoiceHtml);
-    printWindow.document.close();
   };
 
   if (loading) {
@@ -679,12 +571,6 @@ function InvoiceDetails() {
         iframeId="invoice-preview-iframe"
         iframeSrc={`${BASE_URL}/invoices/${id}/pdf?token=${token}`}
         iframeTitle="Invoice PDF Preview"
-        onPrint={() => {
-          window.open(
-            `${BASE_URL}/invoices/${id}/pdf?token=${token}`,
-            "_blank"
-          );
-        }}
       />
     </div>
   );

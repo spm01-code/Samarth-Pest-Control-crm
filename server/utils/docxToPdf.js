@@ -24,7 +24,7 @@ const getLibreOfficeExecutable = () => {
     }
   }
 
-  return "soffice"; // Fallback to system PATH
+  return null;
 };
 
 /**
@@ -92,6 +92,13 @@ export const convertDocxToPdf = async (docxBuffer) => {
   const convertWithLibreOffice = () => {
     return new Promise((resolve, reject) => {
       const libreCmd = getLibreOfficeExecutable();
+      if (!libreCmd) {
+        if (os.platform() === "win32") {
+          return convertWithPowerShell().then(resolve).catch(reject);
+        }
+        return reject(new Error("LibreOffice executable not found."));
+      }
+
       const profileDir = path.join(tempDir, `lo_prof_${tempId}`);
       const profileUri = profileDir.replace(/\\/g, "/");
       const command = `${libreCmd} "-env:UserInstallation=file:///${profileUri}" --headless --convert-to pdf "${inputPath}" --outdir "${tempDir}"`;

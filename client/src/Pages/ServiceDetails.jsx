@@ -13,9 +13,7 @@ import {
   calculateServiceDates,
   isOneTimeJobService,
 } from "../utils/serviceDateCalculator";
-import { generateServicePaperHtml } from "../utils/servicePaperTemplate";
 import { getServiceDocxUrl, getServicePdfUrl } from "../API/serviceAPI";
-import { fetchCompanySettingsAPI } from "../API/companySettingAPI";
 import { fetchInvoiceByServiceIdAPI } from "../API/invoiceAPI";
 import { HiOutlineDocumentText } from "react-icons/hi2";
 import { toast } from "../utils/toast";
@@ -29,7 +27,6 @@ function ServiceDetails() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [companySettings, setCompanySettings] = useState(null);
 
   const [checkingInvoice, setCheckingInvoice] = useState(false);
   const [existingInvoice, setExistingInvoice] = useState(null);
@@ -103,21 +100,7 @@ function ServiceDetails() {
     };
   }, [service, id, token]);
 
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        if (token) {
-          const data = await fetchCompanySettingsAPI(token);
-          if (data?.settings) {
-            setCompanySettings(data.settings);
-          }
-        }
-      } catch (err) {
-        console.warn("Could not load company settings:", err.message);
-      }
-    };
-    loadSettings();
-  }, [token]);
+
 
   const statusStyles = {
     pending: "bg-yellow-100 text-yellow-700",
@@ -453,18 +436,8 @@ function ServiceDetails() {
         title="One Time Job Service Paper Preview"
         icon={<HiOutlineDocumentText className="w-6 h-6 text-blue-600" />}
         iframeId="service-paper-preview-iframe"
-        iframeSrcDoc={generateServicePaperHtml(service, companySettings)}
+        iframeSrc={getServicePdfUrl(service._id, token)}
         iframeTitle="One Time Job Service Paper Preview"
-        iframeClassName="w-full h-full bg-white border-0 shadow-lg"
-        onPrint={() => {
-          const iframe = document.getElementById("service-paper-preview-iframe");
-          if (iframe && iframe.contentWindow) {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-          } else {
-            window.open(getServicePdfUrl(service._id, token), "_blank");
-          }
-        }}
         extraActions={
           <>
             <a

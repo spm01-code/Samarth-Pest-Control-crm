@@ -1,5 +1,9 @@
 import dotenv from "dotenv";
 dotenv.config();
+import dns from "dns";
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder("ipv4first");
+}
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
@@ -51,7 +55,9 @@ app.use(cookieParser());
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 // Database Connection
 mongoose
-  .connect(process.env.MONGO_URI)
+  .connect(process.env.MONGO_URI, {
+    serverSelectionTimeoutMS: 5000,
+  })
   .then(async () => {
     console.log("MongoDB Connected");
     try {

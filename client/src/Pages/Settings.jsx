@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
-import { useSelector } from "react-redux";
+import { createPortal } from "react-dom";
+import { useSelector, useDispatch } from "react-redux";
+import useBodyScrollLock from "../utils/useBodyScrollLock";
 import {
   HiOutlineUser,
   HiOutlineBuildingOffice,
@@ -23,9 +25,36 @@ import {
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import ChangePasswordModal from "../Components/ChangePasswordModal";
+import { refreshSession, logout } from "../slices/authSlice";
 
 function Settings() {
-  const { user } = useSelector((state) => state.auth);
+  const dispatch = useDispatch();
+  const { user, token } = useSelector((state) => state.auth);
+
+  // Helper to handle 401 token expiration gracefully
+  const executeWithRefresh = async (apiCall) => {
+    if (!token) return null;
+    try {
+      return await apiCall(token);
+    } catch (err) {
+      if (
+        err.message === "Invalid or expired token" ||
+        err.message?.toLowerCase().includes("unauthorized") ||
+        err.message?.toLowerCase().includes("expired")
+      ) {
+        try {
+          const refreshed = await dispatch(refreshSession()).unwrap();
+          if (refreshed?.accessToken) {
+            return await apiCall(refreshed.accessToken);
+          }
+        } catch (refreshErr) {
+          dispatch(logout());
+          throw new Error("Your session has expired. Please log in again.");
+        }
+      }
+      throw err;
+    }
+  };
 
   // Tabs state: 'account' | 'prefixes' | 'templates'
   const [activeTab, setActiveTab] = useState("account");
@@ -53,7 +82,6 @@ function Settings() {
   });
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-
 
   // 2. Prefixes & Numbering State
   const [numberingYear, setNumberingYear] = useState(new Date().getFullYear());
@@ -83,7 +111,8 @@ function Settings() {
   const [editCompanyData, setEditCompanyData] = useState({});
   const [savingCompany, setSavingCompany] = useState(false);
 
-  const token = useSelector((state) => state.auth.token);
+  // Lock background body scroll when Add Template modal or Edit Company modal is open
+  useBodyScrollLock(showAddTemplateModal || showCompanyModal);
 
   // Load from localStorage on mount (for account settings & prefixes only)
   useEffect(() => {
@@ -97,8 +126,8 @@ function Settings() {
   const loadCompanySettings = async () => {
     if (!token) return;
     try {
-      const data = await fetchCompanySettingsAPI(token);
-      if (data.success) {
+      const data = await executeWithRefresh((t) => fetchCompanySettingsAPI(t));
+      if (data && data.success) {
         if (data.numberingConfig) {
           setNumberingConfig(data.numberingConfig);
         }
@@ -151,10 +180,10 @@ function Settings() {
     setLoadingTemplates(true);
     setTemplateError("");
     try {
-      const data = await fetchTemplatesAPI(token);
-      if (data.success) {
+      const data = await executeWithRefresh((t) => fetchTemplatesAPI(t));
+      if (data && data.success) {
         setTemplates(data.templates);
-      } else {
+      } else if (data) {
         setTemplateError(data.message || "Failed to load templates");
       }
     } catch (err) {
@@ -209,13 +238,13 @@ function Settings() {
         renewalPrefix: prefixData.renewal,
       };
 
-      const data = await updateCompanySettingsAPI(payload, token);
-      if (data.success) {
+      const data = await executeWithRefresh((t) => updateCompanySettingsAPI(payload, t));
+      if (data && data.success) {
         setAccountData(editCompanyData);
         localStorage.setItem("crm_settings_account", JSON.stringify(editCompanyData));
         toast.success("Account & Company profile updated successfully!");
         setShowCompanyModal(false);
-      } else {
+      } else if (data) {
         toast.error(getErrorMessage(data.message, "Failed to save company settings on backend"));
       }
     } catch (err) {
@@ -241,14 +270,14 @@ function Settings() {
         numberingYear: trimmedYear,
       };
 
-      const data = await updateCompanySettingsAPI(payload, token);
-      if (data.success) {
+      const data = await executeWithRefresh((t) => updateCompanySettingsAPI(payload, t));
+      if (data && data.success) {
         if (data.numberingConfig) {
           setNumberingConfig(data.numberingConfig);
         }
         toast.success("Numbering year updated successfully!");
         loadCompanySettings();
-      } else {
+      } else if (data) {
         toast.error(getErrorMessage(data.message, "Failed to save numbering settings on backend"));
       }
     } catch (err) {
@@ -278,11 +307,11 @@ function Settings() {
   const handleSelectTemplate = async (templateId) => {
     setLoadingTemplates(true);
     try {
-      const data = await activateTemplateAPI(templateId, token);
-      if (data.success) {
+      const data = await executeWithRefresh((t) => activateTemplateAPI(templateId, t));
+      if (data && data.success) {
         toast.success("Template activated successfully!");
         loadTemplates();
-      } else {
+      } else if (data) {
         toast.error(getErrorMessage(data.message, "Failed to activate template"));
       }
     } catch (err) {
@@ -313,13 +342,13 @@ function Settings() {
     formData.append("template", file);
 
     try {
-      const data = await uploadTemplateAPI(formData, token);
-      if (data.success) {
+      const data = await executeWithRefresh((t) => uploadTemplateAPI(formData, t));
+      if (data && data.success) {
         toast.success("Template uploaded and activated successfully!");
         setShowAddTemplateModal(false);
         setNewTemplate({ module: "invoice", name: "", file: null });
         loadTemplates();
-      } else {
+      } else if (data) {
         toast.error(getErrorMessage(data.message, "Failed to upload template"));
       }
     } catch (err) {
@@ -338,11 +367,11 @@ function Settings() {
 
     setLoadingTemplates(true);
     try {
-      const data = await deleteTemplateAPI(id, token);
-      if (data.success) {
+      const data = await executeWithRefresh((t) => deleteTemplateAPI(id, t));
+      if (data && data.success) {
         toast.success("Template deleted successfully!");
         loadTemplates();
-      } else {
+      } else if (data) {
         toast.error(getErrorMessage(data.message, "Failed to delete template"));
       }
     } catch (err) {
@@ -852,287 +881,452 @@ function Settings() {
       </div>
 
       {/* MODAL FOR ADDING NEW TEMPLATES */}
-      {showAddTemplateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden border border-slate-100">
-            <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900">Add New Document DOCX Template</h3>
-              <button
-                onClick={() => setShowAddTemplateModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-medium"
-              >
-                ✕ Close
-              </button>
-            </div>
-            <form onSubmit={handleAddTemplate} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Target Document Module</label>
-                  <select
-                    value={newTemplate.module}
-                    onChange={(e) => setNewTemplate({ ...newTemplate, module: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 outline-none focus:border-blue-600 text-sm"
-                  >
-                    <option value="invoice">Invoice (NON-GST)</option>
-                    <option value="tax-invoice">Tax Invoice (GST)</option>
-                    <option value="quotation">PC Quotation</option>
-                    <option value="att-quotation">ATT Quotation</option>
-                    <option value="contract-renewal">Contract Renewal</option>
-                    <option value="one-time-job">One Time Job Service Paper</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 mb-1">Template Label Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Samarth Invoice Modern"
-                    value={newTemplate.name}
-                    onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 outline-none focus:border-blue-600 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Template DOCX File</label>
-                <input
-                  type="file"
-                  required
-                  accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    setNewTemplate({ ...newTemplate, file });
-                  }}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 outline-none focus:border-blue-600 text-sm"
-                />
-                <span className="text-[10px] text-slate-400 mt-1 block">
-                  Only .docx template files are supported. Needs to contain tags like {"{{companyName}}"}, {"{{customerName}}"}, {"{{totalAmount}}"}, etc.
-                </span>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
+      {showAddTemplateModal &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overscroll-contain"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !submittingTemplate) {
+                setShowAddTemplateModal(false);
+              }
+            }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between shrink-0">
+                <h3 className="text-base font-bold text-slate-900">
+                  Add New Document DOCX Template
+                </h3>
                 <button
                   type="button"
                   onClick={() => setShowAddTemplateModal(false)}
                   disabled={submittingTemplate}
-                  className="px-4 py-2 border border-slate-300 rounded-xl text-slate-600 text-sm hover:bg-slate-50 transition disabled:opacity-50"
+                  className="text-slate-400 hover:text-slate-600 text-sm font-medium disabled:opacity-50 cursor-pointer"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingTemplate}
-                  className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1.5"
-                >
-                  {submittingTemplate ? "Uploading..." : "Upload Template"}
+                  ✕ Close
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+              <form
+                onSubmit={handleAddTemplate}
+                className="p-6 space-y-4 overflow-y-auto flex-1"
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Target Document Module
+                    </label>
+                    <select
+                      value={newTemplate.module}
+                      onChange={(e) =>
+                        setNewTemplate({ ...newTemplate, module: e.target.value })
+                      }
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 outline-none focus:border-blue-600 text-sm"
+                    >
+                      <option value="invoice">Invoice (NON-GST)</option>
+                      <option value="tax-invoice">Tax Invoice (GST)</option>
+                      <option value="quotation">PC Quotation</option>
+                      <option value="att-quotation">ATT Quotation</option>
+                      <option value="contract-renewal">Contract Renewal</option>
+                      <option value="one-time-job">
+                        One Time Job Service Paper
+                      </option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Template Label Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Samarth Invoice Modern"
+                      value={newTemplate.name}
+                      onChange={(e) =>
+                        setNewTemplate({ ...newTemplate, name: e.target.value })
+                      }
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 outline-none focus:border-blue-600 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    Template DOCX File
+                  </label>
+                  <input
+                    type="file"
+                    required
+                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      setNewTemplate({ ...newTemplate, file });
+                    }}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 outline-none focus:border-blue-600 text-sm"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Only .docx template files are supported. Needs to contain tags
+                    like {"{{companyName}}"}, {"{{customerName}}"},{" "}
+                    {"{{totalAmount}}"}, etc.
+                  </span>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddTemplateModal(false)}
+                    disabled={submittingTemplate}
+                    className="px-4 py-2 border border-slate-300 rounded-xl text-slate-600 text-sm hover:bg-slate-50 transition disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingTemplate}
+                    className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {submittingTemplate ? "Uploading..." : "Upload Template"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* MODAL FOR EDITING COMPANY DETAILS */}
-      {showCompanyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col">
-            <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between">
-              <h3 className="text-base font-bold text-slate-900">Edit Company Profile Settings</h3>
-              <button
-                onClick={() => setShowCompanyModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-medium"
-              >
-                ✕ Close
-              </button>
-            </div>
-            
-            <form onSubmit={handleSaveAccount} className="overflow-y-auto p-6 space-y-5 flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Company Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.companyName || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, companyName: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Tax ID / GSTIN</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.companyTaxId || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, companyTaxId: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Company Email</label>
-                  <input
-                    type="email"
-                    required
-                    value={editCompanyData.companyEmail || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, companyEmail: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Company Phone</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.companyPhone || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, companyPhone: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Company Website</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.companyWebsite || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, companyWebsite: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Register Office Address</label>
-                <textarea
-                  required
-                  rows={2}
-                  value={editCompanyData.companyAddressReg || ""}
-                  onChange={(e) => setEditCompanyData({ ...editCompanyData, companyAddressReg: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm resize-none"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Corporate Office Address</label>
-                <textarea
-                  required
-                  rows={2}
-                  value={editCompanyData.companyAddress || ""}
-                  onChange={(e) => setEditCompanyData({ ...editCompanyData, companyAddress: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm resize-none"
-                />
-              </div>
-
-              <hr className="border-slate-100" />
-              <h3 className="text-sm font-semibold text-slate-800">GST Invoice Bank Settings</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Bank Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.gstBankName || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, gstBankName: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Account Number</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.gstBankAccount || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, gstBankAccount: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">IFSC Code</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.gstBankIfsc || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, gstBankIfsc: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
-                  />
-                </div>
-              </div>
-
-              <hr className="border-slate-100" />
-              <h3 className="text-sm font-semibold text-slate-800">Non-GST Invoice Bank & Payment Settings</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Bank Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.nongstBankName || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, nongstBankName: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Account Number</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.nongstBankAccount || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, nongstBankAccount: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">IFSC Code</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.nongstBankIfsc || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, nongstBankIfsc: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">PAN Number</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.pan || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, pan: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">UPI ID (GPAY QR Code)</label>
-                  <input
-                    type="text"
-                    required
-                    value={editCompanyData.upiId || ""}
-                    onChange={(e) => setEditCompanyData({ ...editCompanyData, upiId: e.target.value })}
-                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="border-t border-slate-100 flex justify-end gap-3 pt-4">
+      {showCompanyModal &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overscroll-contain"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !savingCompany) {
+                setShowCompanyModal(false);
+              }
+            }}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between shrink-0">
+                <h3 className="text-base font-bold text-slate-900">
+                  Edit Company Profile Settings
+                </h3>
                 <button
                   type="button"
                   onClick={() => setShowCompanyModal(false)}
                   disabled={savingCompany}
-                  className="px-4 py-2 border border-slate-300 rounded-xl text-slate-600 text-sm hover:bg-slate-50 transition disabled:opacity-50"
+                  className="text-slate-400 hover:text-slate-600 text-sm font-medium disabled:opacity-50 cursor-pointer"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingCompany}
-                  className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition disabled:opacity-50"
-                >
-                  {savingCompany ? "Saving..." : "Save Details"}
+                  ✕ Close
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+
+              <form
+                onSubmit={handleSaveAccount}
+                className="overflow-y-auto p-6 space-y-5 flex-1"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Company Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.companyName || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          companyName: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Tax ID / GSTIN
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.companyTaxId || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          companyTaxId: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Company Email
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={editCompanyData.companyEmail || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          companyEmail: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Company Phone
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.companyPhone || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          companyPhone: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Company Website
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.companyWebsite || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          companyWebsite: e.target.value,
+                        })
+                      }
+                      className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Register Office Address
+                  </label>
+                  <textarea
+                    required
+                    rows={2}
+                    value={editCompanyData.companyAddressReg || ""}
+                    onChange={(e) =>
+                      setEditCompanyData({
+                        ...editCompanyData,
+                        companyAddressReg: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Corporate Office Address
+                  </label>
+                  <textarea
+                    required
+                    rows={2}
+                    value={editCompanyData.companyAddress || ""}
+                    onChange={(e) =>
+                      setEditCompanyData({
+                        ...editCompanyData,
+                        companyAddress: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-sm resize-none"
+                  />
+                </div>
+
+                <hr className="border-slate-100" />
+                <h3 className="text-sm font-semibold text-slate-800">
+                  GST Invoice Bank Settings
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Bank Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.gstBankName || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          gstBankName: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Account Number
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.gstBankAccount || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          gstBankAccount: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      IFSC Code
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.gstBankIfsc || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          gstBankIfsc: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <hr className="border-slate-100" />
+                <h3 className="text-sm font-semibold text-slate-800">
+                  Non-GST Invoice Bank & Payment Settings
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Bank Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.nongstBankName || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          nongstBankName: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Account Number
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.nongstBankAccount || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          nongstBankAccount: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      IFSC Code
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.nongstBankIfsc || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          nongstBankIfsc: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      PAN Number
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.pan || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          pan: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      UPI ID (GPAY QR Code)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editCompanyData.upiId || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          upiId: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 flex justify-end gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowCompanyModal(false)}
+                    disabled={savingCompany}
+                    className="px-4 py-2 border border-slate-300 rounded-xl text-slate-600 text-sm hover:bg-slate-50 transition disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingCompany}
+                    className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+                  >
+                    {savingCompany ? "Saving..." : "Save Details"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* Change Password Modal */}
       <ChangePasswordModal

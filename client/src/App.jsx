@@ -24,8 +24,6 @@ import Alerts from "./Pages/Alerts";
 import Attendance from "./Pages/Attendance";
 import Renewals from "./Pages/Renewals";
 import RenewalDetails from "./Pages/RenewalDetails";
-import InvoicePrint from "./Components/InvoicePrint";
-import RenewalPrint from "./Components/RenewalPrint";
 import Upload from "./Pages/Upload";
 import Settings from "./Pages/Settings";
 import PageNotFound from "./Pages/PageNotFound";
@@ -96,15 +94,6 @@ function App() {
       <Route
         path="/verify-otp"
         element={!token ? <VerifyOtp /> : <Navigate to="/" />}
-      />
-
-      <Route
-        path="/invoices/:id/print"
-        element={token ? <InvoicePrint /> : <Navigate to="/login" />}
-      />
-      <Route
-        path="/renewals/:id/print"
-        element={token ? <RenewalPrint /> : <Navigate to="/login" />}
       />
 
       {/* Dashboard Layout */}
