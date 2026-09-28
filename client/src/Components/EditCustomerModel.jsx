@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useDispatch } from "react-redux";
 import { editCustomer } from "../slices/customerSlice";
 import { toast } from "../utils/toast";
@@ -13,6 +13,7 @@ function EditCustomerModal({
 
   const [formData, setFormData] = useState({
     customerType: "",
+    jobNo: "",
     fullName: "",
     companyName: "",
     phone: "",
@@ -26,6 +27,7 @@ function EditCustomerModal({
     if (customer) {
       setFormData({
         customerType: customer.customerType || "",
+        jobNo: customer.jobNo || "",
         fullName: customer.fullName || "",
         companyName: customer.companyName || "",
         phone: customer.phone || "",
@@ -102,6 +104,14 @@ function EditCustomerModal({
           onSubmit={handleSubmit}
           className="grid md:grid-cols-2 gap-4"
         >
+
+          <input
+            name="jobNo"
+            value={formData.jobNo}
+            onChange={handleChange}
+            placeholder="Job No (e.g. A/03)"
+            className="border rounded-lg p-3 font-semibold"
+          />
 
           <input
             name="fullName"

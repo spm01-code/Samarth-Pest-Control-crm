@@ -13,6 +13,7 @@ function CreateCustomerModal({
 
   const [formData, setFormData] = useState({
     customerType: "residential",
+    jobNo: "",
     fullName: "",
     companyName: "",
     phone: "",
@@ -41,6 +42,7 @@ function CreateCustomerModal({
 
         setFormData({
           customerType: "residential",
+          jobNo: "",
           fullName: "",
           companyName: "",
           phone: "",
@@ -97,6 +99,18 @@ function CreateCustomerModal({
               <option value="residential">Residential</option>
               <option value="commercial">Commercial</option>
             </select>
+          </div>
+          {/* Job No */}
+          <div>
+            <label className="block mb-2 font-medium">Job No (Optional)</label>
+            <input
+              type="text"
+              name="jobNo"
+              value={formData.jobNo}
+              onChange={handleChange}
+              placeholder="e.g. A/03 (Auto-generated if left blank)"
+              className="w-full border rounded-lg p-3"
+            />
           </div>
           {/* Full Name */}
           <div>

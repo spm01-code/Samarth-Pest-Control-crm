@@ -297,6 +297,7 @@ function CreateQuotationModal({
     const q = customerSearch.trim().toLowerCase();
     return (
       (customer.fullName?.toLowerCase() || "").includes(q) ||
+      (customer.jobNo?.toLowerCase() || "").includes(q) ||
       (customer.phone?.toLowerCase() || "").includes(q) ||
       (customer.alternatePhone?.toLowerCase() || "").includes(q) ||
       (customer.companyName?.toLowerCase() || "").includes(q)
@@ -472,8 +473,9 @@ function CreateQuotationModal({
                       }}
                       className="block w-full p-3 text-left hover:bg-slate-100"
                     >
-                      <span className="block font-medium">
-                        {customer.fullName}
+                      <span className="flex justify-between items-center font-medium">
+                        <span>{customer.fullName}</span>
+                        {customer.jobNo && <span className="text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold text-slate-700">Job: {customer.jobNo}</span>}
                       </span>
                       <span className="text-sm text-gray-500">
                         {customer.phone}

@@ -183,23 +183,8 @@ export const numberToWords = (amount) => {
   return result;
 };
 
-/**
- * Get active document template.
- */
-const getActiveTemplate = async (documentType) => {
-  const template = await DocumentTemplate.findOne({
-    documentType,
-    isActive: true,
-  });
-
-  if (!template) {
-    throw new Error(`No active ${documentType} template found`);
-  }
-
-  if (!template.filePath) {
-    throw new Error("Template file path is missing");
-  }
-
+const resolveTemplatePath = (template) => {
+  if (!template || !template.filePath) return null;
   const rawPath = template.filePath;
   const normalizedFilePath = rawPath ? rawPath.replace(/\\/g, "/") : "";
   const diskFileName = path.basename(normalizedFilePath);
@@ -219,20 +204,50 @@ const getActiveTemplate = async (documentType) => {
     path.resolve(process.cwd(), "server", "templates", userFileName),
   ];
 
-  const resolvedPath = candidatePaths.find(
+  return candidatePaths.find(
     (candidate) => Boolean(candidate) && fs.existsSync(candidate)
-  );
+  ) || null;
+};
 
-  if (!resolvedPath) {
-    throw new Error(
-      "The active template file could not be found on the server",
-    );
+/**
+ * Get active document template.
+ */
+const getActiveTemplate = async (documentType) => {
+  const templates = await DocumentTemplate.find({ documentType }).sort({ isActive: -1, updatedAt: -1 });
+
+  for (const tmpl of templates) {
+    const resolvedPath = resolveTemplatePath(tmpl);
+    if (resolvedPath) {
+      return {
+        ...(tmpl.toObject ? tmpl.toObject() : tmpl),
+        filePath: resolvedPath,
+      };
+    }
   }
 
-  return {
-    ...(template.toObject ? template.toObject() : template),
-    filePath: resolvedPath,
+  // Fallback to related documentType if requested type file is not on disk
+  const fallbacks = {
+    "tax-invoice": "invoice",
+    "att-quotation": "quotation",
   };
+
+  const fallbackType = fallbacks[documentType];
+  if (fallbackType) {
+    const fallbackTemplates = await DocumentTemplate.find({ documentType: fallbackType }).sort({ isActive: -1, updatedAt: -1 });
+    for (const tmpl of fallbackTemplates) {
+      const resolvedPath = resolveTemplatePath(tmpl);
+      if (resolvedPath) {
+        return {
+          ...(tmpl.toObject ? tmpl.toObject() : tmpl),
+          filePath: resolvedPath,
+        };
+      }
+    }
+  }
+
+  throw new Error(
+    `The active template file for '${documentType}' could not be found on the server`,
+  );
 };
 
 /**
@@ -250,10 +265,35 @@ const loadDocxTemplate = (filePath) => {
 };
 
 /**
+ * Cleans trailing empty paragraphs and page breaks from document XML before zip generation.
+ */
+const cleanDocxXml = (zip) => {
+  const fileKey = "word/document.xml";
+  if (!zip || !zip.files || !zip.files[fileKey]) return;
+  try {
+    let xml = zip.files[fileKey].asText();
+
+    // 1. Remove trailing empty paragraphs or whitespace-only paragraphs before <w:sectPr> or </w:body>
+    const trailingEmptyParaPattern = /(?:<w:p\b[^>]*>(?:<w:pPr>[\s\S]*?<\/w:pPr>)?(?:\s*<w:r\b[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t\b[^>]*>[\s\r\n]*<\/w:t>\s*<\/w:r>)*\s*<\/w:p>|<w:p\b[^>]*\/>\s*)+(?=\s*<w:sectPr|\s*<\/w:body>)/gi;
+    xml = xml.replace(trailingEmptyParaPattern, "");
+
+    // 2. Remove trailing page breaks <w:br ... w:type="page" .../> before <w:sectPr> or </w:body>
+    const trailingPageBreakPattern = /(?:<w:p\b[^>]*>(?:<w:pPr>[\s\S]*?<\/w:pPr>)?\s*<w:r\b[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:br\b[^>]*w:type="page"[^>]*\/>\s*<\/w:r>\s*<\/w:p>|<w:br\b[^>]*w:type="page"[^>]*\/>\s*)+(?=\s*<w:sectPr|\s*<\/w:body>)/gi;
+    xml = xml.replace(trailingPageBreakPattern, "");
+
+    zip.file(fileKey, xml);
+  } catch (err) {
+    console.warn("Failed to clean document XML:", err.message);
+  }
+};
+
+/**
  * Generate DOCX buffer.
  */
 const generateBuffer = (doc) => {
-  return doc.getZip().generate({
+  const zip = doc.getZip();
+  cleanDocxXml(zip);
+  return zip.generate({
     type: "nodebuffer",
     compression: "DEFLATE",
   });
@@ -333,6 +373,10 @@ const buildCustomerData = (customer) => {
     customerEmail: customer.email || "",
 
     customerType: customer.customerType || "",
+
+    customerJobNo: customer.jobNo || "",
+
+    customerJobNumber: customer.jobNo || "",
   };
 };
 

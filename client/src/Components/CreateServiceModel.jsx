@@ -131,17 +131,25 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
 
             {showCustomers && customerSearch.trim() !== "" && (
               <div className="absolute z-50 w-full bg-white border rounded-xl mt-1 max-h-52 overflow-y-auto shadow-lg">
-                {customers?.filter((customer) =>
-                  customer.fullName
-                    .toLowerCase()
-                    .includes(customerSearch.toLowerCase()),
-                ).length > 0 ? (
+                {customers?.filter((customer) => {
+                  const q = customerSearch.toLowerCase().trim();
+                  return (
+                    (customer.fullName?.toLowerCase() || "").includes(q) ||
+                    (customer.jobNo?.toLowerCase() || "").includes(q) ||
+                    (customer.phone?.toLowerCase() || "").includes(q) ||
+                    (customer.companyName?.toLowerCase() || "").includes(q)
+                  );
+                }).length > 0 ? (
                   customers
-                    .filter((customer) =>
-                      customer.fullName
-                        .toLowerCase()
-                        .includes(customerSearch.toLowerCase()),
-                    )
+                    .filter((customer) => {
+                      const q = customerSearch.toLowerCase().trim();
+                      return (
+                        (customer.fullName?.toLowerCase() || "").includes(q) ||
+                        (customer.jobNo?.toLowerCase() || "").includes(q) ||
+                        (customer.phone?.toLowerCase() || "").includes(q) ||
+                        (customer.companyName?.toLowerCase() || "").includes(q)
+                      );
+                    })
                     .map((customer) => (
                       <div
                         key={customer._id}
@@ -159,7 +167,10 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
                         }}
                         className="p-3 hover:bg-slate-100 cursor-pointer"
                       >
-                        <div className="font-medium">{customer.fullName}</div>
+                        <div className="font-medium flex justify-between">
+                          <span>{customer.fullName}</span>
+                          {customer.jobNo && <span className="text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold text-slate-700">Job: {customer.jobNo}</span>}
+                        </div>
                         <div className="text-sm text-gray-500">
                           {customer.phone}
                         </div>

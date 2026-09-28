@@ -14,6 +14,12 @@ const customerSchema = new mongoose.Schema(
       trim: true,
     },
 
+    jobNo: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+
     companyName: {
       type: String,
       trim: true,

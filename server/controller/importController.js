@@ -215,7 +215,7 @@ export const parseExcelTime = (val) => {
 // are excluded.
 // ============================================================
 const UPDATE_WHITELISTS = {
-  Customer: ["fullName", "email", "address", "contactPerson", "gstNumber", "companyName", "customerType", "alternatePhone"],
+  Customer: ["fullName", "jobNo", "email", "address", "contactPerson", "gstNumber", "companyName", "customerType", "alternatePhone"],
   Employee: ["fullName", "email", "address", "role", "salary", "joiningDate"],
   Service: ["jobNo", "serviceName", "serviceDate", "serviceTime", "address", "amount", "area", "locationOfPest", "reference", "clientReference", "frequency", "contactPerson", "contactNumber", "remark", "paymentDetails", "operatorName"],
   Invoice: ["invoiceDate", "premisesTreated", "treatmentType", "hsnCode", "subtotal", "totalAmount", "gstNumber", "tds", "rtn", "gstFile", "billingPeriod", "amountInWords"],

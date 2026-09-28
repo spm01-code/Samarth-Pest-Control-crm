@@ -181,8 +181,8 @@ function CustomerProfile() {
                 {selectedCustomer.fullName}
               </h1>
 
-              <p className="text-gray-500 mt-1">
-                Customer ID: {selectedCustomer._id}
+              <p className="text-slate-600 mt-1 font-semibold text-lg">
+                Job No: {selectedCustomer.jobNo || selectedCustomer._id}
               </p>
 
               <p className="text-gray-700 mt-1">
@@ -311,7 +311,10 @@ function CustomerProfile() {
                   Customer Details
                 </h2>
 
-                <p className="capitalize">
+                <p>
+                  <strong>Job No:</strong> {selectedCustomer.jobNo || "-"}
+                </p>
+                <p className="mt-2 capitalize">
                   <strong>Type:</strong> {selectedCustomer.customerType}
                 </p>
                 <p className="mt-2">

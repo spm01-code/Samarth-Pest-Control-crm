@@ -16,6 +16,7 @@ function Customers() {
 
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [filter, setFilter] = useState("total");
 
   useEffect(() => {
     dispatch(fetchCustomers());
@@ -25,12 +26,22 @@ function Customers() {
 
   const searchLower = search.toLowerCase();
   const filteredCustomers = customerList.filter((customer) => {
+    const custType = customer.customerType?.toLowerCase() || "";
+    if (filter === "residential" && custType !== "residential") {
+      return false;
+    }
+    if (filter === "commercial" && custType !== "commercial") {
+      return false;
+    }
+
     const fullName = customer.fullName?.toLowerCase() || "";
+    const jobNo = customer.jobNo?.toLowerCase() || "";
     const phone = customer.phone || "";
     const alternatePhone = customer.alternatePhone || "";
     const companyName = customer.companyName?.toLowerCase() || "";
     return (
       fullName.includes(searchLower) ||
+      jobNo.includes(searchLower) ||
       phone.includes(search) ||
       alternatePhone.includes(search) ||
       companyName.includes(searchLower)
@@ -52,7 +63,7 @@ function Customers() {
           <p className="text-slate-500 mt-1">Manage and view customer records</p>
         </div>
         <button
-          className="bg-blue-800/80 text-white hover:bg-blue-600 px-5 py-2.5 rounded-lg flex items-center gap-2 self-start sm:self-auto"
+          className="bg-blue-800/80 text-white hover:bg-blue-600 px-5 py-2.5 rounded-lg flex items-center gap-2 self-start sm:self-auto cursor-pointer"
           onClick={() => setShowModal(true)}
         >
           <FaPlus /> Add Customer
@@ -66,33 +77,51 @@ function Customers() {
             label: "Total Customers",
             count: customerList.length,
             color: "text-slate-900",
-            background: "bg-slate-50 border-slate-100",
+            background: "bg-slate-50 border-slate-200",
+            activeClass: "ring-2 ring-slate-700 border-slate-400 shadow-md",
           },
           {
             key: "residential",
             label: "Residential",
-            count: customerList.filter((c) => c.customerType === "residential").length,
+            count: customerList.filter((c) => c.customerType?.toLowerCase() === "residential").length,
             color: "text-green-700",
-            background: "bg-green-50 border-green-100",
+            background: "bg-green-50 border-green-200",
+            activeClass: "ring-2 ring-green-600 border-green-400 shadow-md",
           },
           {
             key: "commercial",
             label: "Commercial",
-            count: customerList.filter((c) => c.customerType === "commercial").length,
+            count: customerList.filter((c) => c.customerType?.toLowerCase() === "commercial").length,
             color: "text-blue-700",
-            background: "bg-blue-50 border-blue-100",
+            background: "bg-blue-50 border-blue-200",
+            activeClass: "ring-2 ring-blue-600 border-blue-400 shadow-md",
           },
-        ].map((card) => (
-          <button
-            type="button"
-            key={card.key}
-            className={`border rounded-2xl p-6 text-left shadow-sm transition hover:shadow-md ${card.background}`}
-          >
-            <p className="text-sm font-medium text-slate-600">{card.label}</p>
-            <p className={`text-5xl font-bold mt-2 ${card.color}`}>{card.count}</p>
-            <p className="text-xs text-slate-500 mt-2">Click to view</p>
-          </button>
-        ))}
+        ].map((card) => {
+          const isActive = filter === card.key;
+          return (
+            <button
+              type="button"
+              key={card.key}
+              onClick={() => setFilter(filter === card.key && card.key !== "total" ? "total" : card.key)}
+              className={`border rounded-2xl p-6 text-left shadow-sm transition-all duration-200 cursor-pointer hover:shadow-md ${
+                card.background
+              } ${isActive ? card.activeClass : "opacity-80 hover:opacity-100"}`}
+            >
+              <div className="flex justify-between items-center">
+                <p className="text-sm font-medium text-slate-600">{card.label}</p>
+                {isActive && (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/90 text-slate-700 shadow-xs border border-slate-200">
+                    Active
+                  </span>
+                )}
+              </div>
+              <p className={`text-5xl font-bold mt-2 ${card.color}`}>{card.count}</p>
+              <p className="text-xs text-slate-500 mt-2">
+                {isActive ? "Showing filtered customers" : "Click to view"}
+              </p>
+            </button>
+          );
+        })}
       </div>
 
       {/* Search */}
@@ -123,10 +152,11 @@ function Customers() {
       {!loading && !error && (
         <DataTable
           headers={[
+            { key: "jobNo", label: "Job No", width: "15%" },
             { key: "name", label: "Customer", width: "25%" },
-            { key: "type", label: "Customer Type", width: "18%" },
-            { key: "phone", label: "Phone", width: "18%" },
-            { key: "address", label: "Address", width: "29%" },
+            { key: "type", label: "Customer Type", width: "15%" },
+            { key: "phone", label: "Phone", width: "16%" },
+            { key: "address", label: "Address", width: "19%" },
             { key: "status", label: "Status", width: "10%" },
           ]}
           loading={loading}
@@ -140,6 +170,10 @@ function Customers() {
               className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer transition"
               onClick={() => navigate(`/customers/${customer._id}`)}
             >
+              <td className="p-3.5 font-bold text-slate-900 whitespace-nowrap">
+                <TooltipCell value={customer.jobNo || "-"} maxWidth="max-w-[120px]" />
+              </td>
+
               <td className="p-3.5 font-medium">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-800/80 text-white flex items-center justify-center font-semibold text-sm shrink-0">

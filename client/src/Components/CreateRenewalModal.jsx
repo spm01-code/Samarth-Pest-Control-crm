@@ -194,11 +194,13 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
   const searchLower = search.toLowerCase();
   const matches = customers.filter((customer) => {
     const fullName = customer.fullName?.toLowerCase() || "";
+    const jobNo = customer.jobNo?.toLowerCase() || "";
     const phone = customer.phone || "";
     const alternatePhone = customer.alternatePhone || "";
     const companyName = customer.companyName?.toLowerCase() || "";
     return (
       fullName.includes(searchLower) ||
+      jobNo.includes(searchLower) ||
       phone.includes(search) ||
       alternatePhone.includes(search) ||
       companyName.includes(searchLower)
@@ -290,9 +292,12 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
                     }}
                     className="block w-full p-3 text-left hover:bg-slate-100"
                   >
-                    <span className="block font-medium">
-                      {customer.fullName}
-                      {customer.companyName ? ` (${customer.companyName})` : ""}
+                    <span className="flex justify-between items-center font-medium">
+                      <span>
+                        {customer.fullName}
+                        {customer.companyName ? ` (${customer.companyName})` : ""}
+                      </span>
+                      {customer.jobNo && <span className="text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold text-slate-700">Job: {customer.jobNo}</span>}
                     </span>
                     <span className="text-sm text-gray-500">
                       {customer.phone ? `Phone: ${customer.phone} ` : ""}

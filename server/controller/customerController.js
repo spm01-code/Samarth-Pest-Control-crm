@@ -1,9 +1,33 @@
 import Customer from "../model/customerModel.js";
 
+// Helper: Auto-generate Job No if not provided
+const generateNextJobNo = async (fullName) => {
+  const initial = (fullName && fullName.trim().charAt(0).toUpperCase()) || "C";
+  const prefix = /^[A-Z]$/.test(initial) ? initial : "C";
+  const regex = new RegExp(`^${prefix}\\/(\\d+)$`, "i");
+  const matchingCustomers = await Customer.find({ jobNo: regex }).select("jobNo").lean();
+  let maxNum = 0;
+  for (const c of matchingCustomers) {
+    const match = c.jobNo ? c.jobNo.match(regex) : null;
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNum) maxNum = num;
+    }
+  }
+  const nextNum = String(maxNum + 1).padStart(2, "0");
+  return `${prefix}/${nextNum}`;
+};
+
 // Create Customer
 export const createCustomer = async (req, res) => {
   try {
-    const newCustomer = new Customer(req.body);
+    const customerData = { ...req.body };
+
+    if (!customerData.jobNo || !customerData.jobNo.trim()) {
+      customerData.jobNo = await generateNextJobNo(customerData.fullName);
+    }
+
+    const newCustomer = new Customer(customerData);
 
     await newCustomer.save();
 
@@ -31,6 +55,7 @@ export const getAllCustomers = async (req, res) => {
       query = {
         $or: [
           { fullName: searchRegex },
+          { jobNo: searchRegex },
           { phone: searchRegex },
           { alternatePhone: searchRegex },
           { companyName: searchRegex },

@@ -3,6 +3,61 @@ import path from "path";
 import fs from "fs/promises";
 import fsSync from "fs";
 import os from "os";
+import { PDFDocument, PDFName } from "pdf-lib";
+
+/**
+ * Trims any trailing blank/empty pages from the PDF buffer.
+ */
+export const trimTrailingBlankPages = async (pdfBuffer) => {
+  try {
+    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    const pageCount = pdfDoc.getPageCount();
+    if (pageCount <= 1) return pdfBuffer;
+
+    const pagesToRemove = [];
+
+    for (let i = pageCount - 1; i > 0; i--) {
+      const page = pdfDoc.getPage(i);
+      const node = page.node;
+      const contentsRef = node.get(PDFName.of("Contents"));
+
+      let isBlank = false;
+      if (!contentsRef) {
+        isBlank = true;
+      } else {
+        const contentStream = pdfDoc.context.lookup(contentsRef);
+        let streamStr = "";
+        if (contentStream && contentStream.contents) {
+          streamStr = Buffer.from(contentStream.contents).toString("utf8");
+        } else if (contentStream && typeof contentStream.toString === "function") {
+          streamStr = contentStream.toString();
+        }
+
+        const hasTextOrImage = /\b(Tj|TJ|'|"|Do)\b/.test(streamStr);
+        if (!hasTextOrImage) {
+          isBlank = true;
+        }
+      }
+
+      if (isBlank) {
+        pagesToRemove.push(i);
+      } else {
+        break;
+      }
+    }
+
+    if (pagesToRemove.length > 0 && pagesToRemove.length < pageCount) {
+      for (const pageIdx of pagesToRemove) {
+        pdfDoc.removePage(pageIdx);
+      }
+      const savedBytes = await pdfDoc.save();
+      return Buffer.from(savedBytes);
+    }
+  } catch (err) {
+    console.warn("Could not trim blank PDF pages:", err.message);
+  }
+  return pdfBuffer;
+};
 
 /**
  * Finds the LibreOffice executable binary based on OS.
@@ -78,7 +133,8 @@ export const convertDocxToPdf = async (docxBuffer) => {
         try {
           const pdfBuffer = await fs.readFile(outputPath);
           await fs.unlink(outputPath);
-          resolve(pdfBuffer);
+          const trimmedBuffer = await trimTrailingBlankPages(pdfBuffer);
+          resolve(trimmedBuffer);
         } catch (readError) {
           reject(
             new Error(`Failed to read converted PDF file: ${readError.message}`)
@@ -132,7 +188,8 @@ export const convertDocxToPdf = async (docxBuffer) => {
         try {
           const pdfBuffer = await fs.readFile(outputPath);
           await fs.unlink(outputPath);
-          resolve(pdfBuffer);
+          const trimmedBuffer = await trimTrailingBlankPages(pdfBuffer);
+          resolve(trimmedBuffer);
         } catch (readError) {
           if (os.platform() === "win32") {
             return convertWithPowerShell().then(resolve).catch(reject);
