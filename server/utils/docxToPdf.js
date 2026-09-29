@@ -10,6 +10,7 @@ import { PDFDocument, PDFName } from "pdf-lib";
  */
 export const trimTrailingBlankPages = async (pdfBuffer) => {
   try {
+    if (!pdfBuffer || pdfBuffer.length === 0) return pdfBuffer;
     const pdfDoc = await PDFDocument.load(pdfBuffer);
     const pageCount = pdfDoc.getPageCount();
     if (pageCount <= 1) return pdfBuffer;
@@ -47,14 +48,24 @@ export const trimTrailingBlankPages = async (pdfBuffer) => {
     }
 
     if (pagesToRemove.length > 0 && pagesToRemove.length < pageCount) {
+      // Sort descending to ensure page index stability during removal
+      pagesToRemove.sort((a, b) => b - a);
+
       for (const pageIdx of pagesToRemove) {
         pdfDoc.removePage(pageIdx);
       }
+
       const savedBytes = await pdfDoc.save();
-      return Buffer.from(savedBytes);
+      const trimmedBuffer = Buffer.from(savedBytes);
+
+      // Defensive Validation: Verify trimmed PDF is valid and non-empty
+      const checkDoc = await PDFDocument.load(trimmedBuffer);
+      if (checkDoc.getPageCount() > 0 && trimmedBuffer.length > 0) {
+        return trimmedBuffer;
+      }
     }
   } catch (err) {
-    console.warn("Could not trim blank PDF pages:", err.message);
+    console.warn("Could not trim blank PDF pages (falling back to original):", err.message);
   }
   return pdfBuffer;
 };

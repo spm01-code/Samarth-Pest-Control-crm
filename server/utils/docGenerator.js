@@ -265,34 +265,10 @@ const loadDocxTemplate = (filePath) => {
 };
 
 /**
- * Cleans trailing empty paragraphs and page breaks from document XML before zip generation.
- */
-const cleanDocxXml = (zip) => {
-  const fileKey = "word/document.xml";
-  if (!zip || !zip.files || !zip.files[fileKey]) return;
-  try {
-    let xml = zip.files[fileKey].asText();
-
-    // 1. Remove trailing empty paragraphs or whitespace-only paragraphs before <w:sectPr> or </w:body>
-    const trailingEmptyParaPattern = /(?:<w:p\b[^>]*>(?:<w:pPr>[\s\S]*?<\/w:pPr>)?(?:\s*<w:r\b[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:t\b[^>]*>[\s\r\n]*<\/w:t>\s*<\/w:r>)*\s*<\/w:p>|<w:p\b[^>]*\/>\s*)+(?=\s*<w:sectPr|\s*<\/w:body>)/gi;
-    xml = xml.replace(trailingEmptyParaPattern, "");
-
-    // 2. Remove trailing page breaks <w:br ... w:type="page" .../> before <w:sectPr> or </w:body>
-    const trailingPageBreakPattern = /(?:<w:p\b[^>]*>(?:<w:pPr>[\s\S]*?<\/w:pPr>)?\s*<w:r\b[^>]*>(?:<w:rPr>[\s\S]*?<\/w:rPr>)?\s*<w:br\b[^>]*w:type="page"[^>]*\/>\s*<\/w:r>\s*<\/w:p>|<w:br\b[^>]*w:type="page"[^>]*\/>\s*)+(?=\s*<w:sectPr|\s*<\/w:body>)/gi;
-    xml = xml.replace(trailingPageBreakPattern, "");
-
-    zip.file(fileKey, xml);
-  } catch (err) {
-    console.warn("Failed to clean document XML:", err.message);
-  }
-};
-
-/**
  * Generate DOCX buffer.
  */
 const generateBuffer = (doc) => {
   const zip = doc.getZip();
-  cleanDocxXml(zip);
   return zip.generate({
     type: "nodebuffer",
     compression: "DEFLATE",
