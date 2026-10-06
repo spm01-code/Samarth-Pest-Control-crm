@@ -643,18 +643,18 @@ function Settings() {
                           Invoice
                         </span>
                         <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
-                          Fixed: SPM/INV/
+                          Fixed: SPM/
                         </span>
                       </div>
                       <div className="font-mono text-sm font-bold text-blue-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
                         {numberingConfig?.previews?.INVOICE?.sample ||
                           (numberingYear
-                            ? `SPM/INV/${
+                            ? `SPM/${
                                 String(numberingYear).includes("-")
                                   ? numberingYear
                                   : `${numberingYear}-${Number(numberingYear) + 1}`
                               }/0001`
-                            : "SPM/INV/2026-2027/0001")}
+                            : "SPM/2026-2027/0001")}
                       </div>
                       <p className="text-[11px] text-slate-400">
                         Financial year sequential series (e.g. 2026-2027)

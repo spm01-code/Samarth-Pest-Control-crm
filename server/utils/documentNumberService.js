@@ -9,7 +9,7 @@ export const DOCUMENT_CONFIG = Object.freeze({
   INVOICE: {
     type: "INVOICE",
     label: "Invoice",
-    prefix: "SPM/INV/",
+    prefix: "SPM/",
   },
   PC_QUOTATION: {
     type: "PC_QUOTATION",
@@ -279,12 +279,12 @@ export const syncExistingDocumentSequences = async (models = {}) => {
     const invoices = await Invoice.find().select("invoiceNumber");
     for (const inv of invoices) {
       if (!inv.invoiceNumber) continue;
-      // Match formats: SPM/INV/YYYY-YYYY/NNNN, SPM/INV/YYYY/NNNN, SPM-YYYY-NNNN, INV-YYYY-NNNN, INV-NNNN
-      const m0 = inv.invoiceNumber.match(/SPM\/INV\/(\d{4})[-/](?:\d{2,4})[-\/](\d+)/i);
+      // Match formats: SPM/YYYY-YYYY/NNNN, SPM/INV/YYYY-YYYY/NNNN, SPM/YYYY/NNNN, SPM-YYYY-NNNN, INV-YYYY-NNNN, INV-NNNN
+      const m0 = inv.invoiceNumber.match(/SPM\/(?:INV\/)?(\d{4})[-/](?:\d{2,4})[-\/](\d+)/i);
       if (m0) {
         await ensureMaxSeq("INVOICE", Number(m0[1]), Number(m0[2]));
       } else {
-        const m1 = inv.invoiceNumber.match(/(?:SPM\/INV\/|SPM-|INV-)(\d{4})[-\/](\d+)/i);
+        const m1 = inv.invoiceNumber.match(/(?:SPM\/(?:INV\/)?|SPM-|INV-)(\d{4})[-\/](\d+)/i);
         if (m1) {
           await ensureMaxSeq("INVOICE", Number(m1[1]), Number(m1[2]));
         } else {

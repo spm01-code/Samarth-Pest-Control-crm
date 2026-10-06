@@ -20,22 +20,54 @@ export const trimTrailingBlankPages = async (pdfBuffer) => {
     for (let i = pageCount - 1; i > 0; i--) {
       const page = pdfDoc.getPage(i);
       const node = page.node;
+
+      // Check annotations - if page has annotations, keep it
+      const annotsRef = node.get(PDFName.of("Annots"));
+      if (annotsRef) {
+        const annotsObj = pdfDoc.context.lookup(annotsRef);
+        if (annotsObj) {
+          // Has annotations (form fields, links, etc.) -> NOT blank
+          break;
+        }
+      }
+
       const contentsRef = node.get(PDFName.of("Contents"));
+      if (!contentsRef) {
+        pagesToRemove.push(i);
+        continue;
+      }
+
+      const contentsObj = pdfDoc.context.lookup(contentsRef);
+      let combinedStreamStr = "";
+
+      if (Array.isArray(contentsObj?.array) || (contentsObj && typeof contentsObj.size === "function")) {
+        // Contents is a PDFArray of stream references
+        const size = typeof contentsObj.size === "function" ? contentsObj.size() : contentsObj.array.length;
+        for (let j = 0; j < size; j++) {
+          const streamRef = typeof contentsObj.get === "function" ? contentsObj.get(j) : contentsObj.array[j];
+          const stream = pdfDoc.context.lookup(streamRef);
+          if (stream && stream.contents) {
+            combinedStreamStr += Buffer.from(stream.contents).toString("utf8") + "\n";
+          } else if (stream && typeof stream.toString === "function") {
+            combinedStreamStr += stream.toString() + "\n";
+          }
+        }
+      } else if (contentsObj && contentsObj.contents) {
+        combinedStreamStr = Buffer.from(contentsObj.contents).toString("utf8");
+      } else if (contentsObj && typeof contentsObj.toString === "function") {
+        combinedStreamStr = contentsObj.toString();
+      }
 
       let isBlank = false;
-      if (!contentsRef) {
+      if (!combinedStreamStr || combinedStreamStr.trim().length === 0) {
         isBlank = true;
       } else {
-        const contentStream = pdfDoc.context.lookup(contentsRef);
-        let streamStr = "";
-        if (contentStream && contentStream.contents) {
-          streamStr = Buffer.from(contentStream.contents).toString("utf8");
-        } else if (contentStream && typeof contentStream.toString === "function") {
-          streamStr = contentStream.toString();
-        }
+        const hasTextOrImage = /\b(Tj|TJ|'|"|Do)\b/.test(combinedStreamStr);
+        const hasDrawingOps = /\b(re|m|l|c|S|f|B|W|n)\b/.test(combinedStreamStr);
+        const nonWhitespaceLen = combinedStreamStr.replace(/\s+/g, "").length;
 
-        const hasTextOrImage = /\b(Tj|TJ|'|"|Do)\b/.test(streamStr);
-        if (!hasTextOrImage) {
+        // Conservative rule: If it has text/image, drawing operators, or significant stream size (> 50 bytes), it's NOT blank.
+        if (!hasTextOrImage && !hasDrawingOps && nonWhitespaceLen <= 50) {
           isBlank = true;
         }
       }
@@ -43,6 +75,7 @@ export const trimTrailingBlankPages = async (pdfBuffer) => {
       if (isBlank) {
         pagesToRemove.push(i);
       } else {
+        // Stop checking as soon as we hit a non-blank page (only trim trailing pages)
         break;
       }
     }
