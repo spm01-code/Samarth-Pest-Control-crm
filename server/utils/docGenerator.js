@@ -13,9 +13,24 @@ import CompanySetting from "../model/companySettingModel.js";
 const formatDate = (date) => {
   if (!date) return "";
 
-  const parsedDate = new Date(date);
+  let dVal = date;
+  if (typeof dVal === "number" && dVal > 10000 && dVal < 100000) {
+    dVal = new Date(Math.round((dVal - 25569) * 86400 * 1000));
+  } else if (typeof dVal === "string" && /^\d+(\.\d+)?$/.test(dVal.trim())) {
+    const num = parseFloat(dVal.trim());
+    if (num > 10000 && num < 100000) {
+      dVal = new Date(Math.round((num - 25569) * 86400 * 1000));
+    }
+  }
+
+  const parsedDate = new Date(dVal);
 
   if (Number.isNaN(parsedDate.getTime())) {
+    return "";
+  }
+
+  const year = parsedDate.getFullYear();
+  if (year > 2100 || year < 1970) {
     return "";
   }
 

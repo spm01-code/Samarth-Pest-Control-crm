@@ -149,6 +149,15 @@ export const parseExcelDate = (val) => {
     const s = val.trim();
     if (!s) return null;
 
+    // Check if string is numeric Excel serial date e.g. "46061"
+    if (/^\d+(\.\d+)?$/.test(s)) {
+      const num = parseFloat(s);
+      if (num > 10000 && num < 100000) {
+        const date = new Date(Math.round((num - 25569) * 86400 * 1000));
+        if (!isNaN(date.getTime())) return date;
+      }
+    }
+
     // Check for Month-Year format like "SEP--26", "AUG--25", "OCT--26", "JAN--27", "FEB-26", "JUL--26"
     const monthYearMatch = s.match(/^([a-zA-Z]{3,})[\s\-]+(\d{2,4})$/);
     if (monthYearMatch) {
@@ -181,7 +190,10 @@ export const parseExcelDate = (val) => {
     }
 
     const d = new Date(s);
-    if (!isNaN(d.getTime())) return d;
+    if (!isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      if (y >= 1970 && y <= 2100) return d;
+    }
   }
   return null;
 };
