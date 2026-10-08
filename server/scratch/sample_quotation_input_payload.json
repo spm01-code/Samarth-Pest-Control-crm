@@ -1,0 +1,41 @@
+{
+  "_id": "6a9d6d1b9ca6a69b9599f958",
+  "quotationNumber": "489",
+  "quotationType": "PC",
+  "quotationDate": "+046062-12-31T18:30:00.000Z",
+  "customer": {
+    "_id": "6a9d6d1b9ca6a69b9599f957",
+    "customerType": "residential",
+    "fullName": "FRONT VIEEW PHASE 2 CHS,    P. P. MARG, NEAR JALARAM MANDIR, VIRAR - WEST",
+    "email": "",
+    "address": "P. P. MARG, NEAR JALARAM MANDIR, VIRAR - WEST",
+    "contactPerson": "",
+    "gstNumber": "",
+    "status": "active",
+    "createdAt": "2026-09-06T13:39:39.558Z",
+    "updatedAt": "2026-09-28T06:02:56.391Z",
+    "__v": 0,
+    "jobNo": "F/08"
+  },
+  "premises": "FRONT VIEEW PHASE 2 CHS,    P. P. MARG, NEAR JALARAM MANDIR, VIRAR - WEST",
+  "services": [
+    {
+      "serviceName": "RAT CONTROL",
+      "frequency": "MONTHLY",
+      "cost": 12000,
+      "_id": "6a9d6d1b9ca6a69b9599f959"
+    }
+  ],
+  "paymentTerm": "Within 10 days from invoice submission.",
+  "billingTerm": "Monthly",
+  "subject": "",
+  "specification": "",
+  "equipment": "",
+  "totalAmount": 12000,
+  "notes": "",
+  "status": "Draft",
+  "treatments": [],
+  "createdAt": "2026-09-06T13:39:39.588Z",
+  "updatedAt": "2026-09-06T13:39:39.588Z",
+  "__v": 0
+}

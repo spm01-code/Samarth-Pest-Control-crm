@@ -1,0 +1,193 @@
+{
+  "envLabel": "LOCAL Baseline",
+  "allTemplatesInfo": [
+    {
+      "id": "6a9d0200afdf8486ba34e150",
+      "documentType": "invoice",
+      "fileName": "FORMAT - PC  INVOICE PLACEHOLDER.docx",
+      "resolvedPath": "D:\\CRM\\server\\uploads\\templates\\1788674559888-834328369.docx",
+      "size": 271187,
+      "sha256": "0d8ed34564fa2cf92d7f44ab02e453aacc2c304b0a808a38c5a90fa3527341df"
+    },
+    {
+      "id": "6a9d021cafdf8486ba34e151",
+      "documentType": "contract-renewal",
+      "fileName": "FORMAT - RENEWAL CONTRACT.docx",
+      "resolvedPath": "D:\\CRM\\server\\uploads\\templates\\1788674588486-303766681.docx",
+      "size": 208345,
+      "sha256": "57e98fce37ef642759a31ce002c314085fade72b4b7d342779035f9e9b78586c"
+    },
+    {
+      "id": "6a9d0e07412254911dbf0d71",
+      "documentType": "att-quotation",
+      "fileName": "ATT QTN FORMAT.docx",
+      "resolvedPath": "D:\\CRM\\server\\uploads\\templates\\1788677639237-682202030.docx",
+      "size": 125041,
+      "sha256": "08d89f3608320e354422dc2004379ece6b6df046bc6e6ab2b2ca8fa7e0dae96c"
+    },
+    {
+      "id": "6ab37abe8bf54417798a8c51",
+      "documentType": "tax-invoice",
+      "fileName": "FORMAT TAX BILL PLACEHOLDER.docx",
+      "resolvedPath": "D:\\Major Projects\\CRM main\\server\\uploads\\templates\\1788674544315-20957534.docx",
+      "size": 253142,
+      "sha256": "a2fad6ee51086ada555470081184e0318b230d08cb5a9679e1e7abed11e0f5ac"
+    },
+    {
+      "id": "6ac4894568ec06eebbcf529e",
+      "documentType": "quotation",
+      "fileName": "FORMAT - PC QTN PLACEHOLDER.docx",
+      "resolvedPath": "D:\\Major Projects\\CRM main\\server\\uploads\\templates\\1791265093032-349139013.docx",
+      "size": 197419,
+      "sha256": "68933a195302a7562f8585cbf2786063e82ecb05c4a43c2da0ed50b3ee90f785"
+    }
+  ],
+  "inputPayloadSummary": {
+    "id": "6a9d6d1b9ca6a69b9599f958",
+    "quotationNumber": "489",
+    "customerName": "FRONT VIEEW PHASE 2 CHS,    P. P. MARG, NEAR JALARAM MANDIR, VIRAR - WEST",
+    "serviceCount": 1,
+    "totalAmount": 12000,
+    "quotationType": "PC"
+  },
+  "populatedDocx": {
+    "size": 177999,
+    "sha256": "5959426357221a01316f47a79b789a8e61b726888ca52041889a5731efd47d78",
+    "xmlDetails": {
+      "documentXmlLength": 157939,
+      "documentXmlHash": "aadb52e565a7425a47f9379b00f7e8aae40686fe30d0364b1b548806900fcbaf",
+      "pgSz": "<w:pgSz w:w=\"11906\" w:h=\"16838\" w:code=\"9\"/>",
+      "pgMar": "<w:pgMar w:top=\"113\" w:right=\"113\" w:bottom=\"113\" w:left=\"567\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/>",
+      "fontTagsSample": [
+        "<w:rFonts w:ascii=\"Sora\" w:eastAsia=\"Sora\" w:hAnsi=\"Sora\" w:cs=\"Sora\"/>",
+        "<w:rFonts w:ascii=\"Sora\" w:eastAsia=\"Sora\" w:hAnsi=\"Sora\" w:cs=\"Sora\"/>",
+        "<w:rFonts w:ascii=\"Sora\" w:eastAsia=\"Sora\" w:hAnsi=\"Sora\" w:cs=\"Sora\"/>",
+        "<w:rFonts w:ascii=\"Sora\" w:eastAsia=\"Sora\" w:hAnsi=\"Sora\" w:cs=\"Sora\"/>",
+        "<w:rFonts w:ascii=\"Sora\" w:eastAsia=\"Sora\" w:hAnsi=\"Sora\" w:cs=\"Sora\"/>",
+        "<w:rFonts w:ascii=\"Sora\" w:eastAsia=\"Sora\" w:hAnsi=\"Sora\" w:cs=\"Sora\"/>",
+        "<w:rFonts w:ascii=\"Sora\" w:eastAsia=\"Sora\" w:hAnsi=\"Sora\" w:cs=\"Sora\"/>",
+        "<w:rFonts w:ascii=\"Sora\" w:eastAsia=\"Sora\" w:hAnsi=\"Sora\" w:cs=\"Sora\"/>",
+        "<w:rFonts w:ascii=\"Sora\" w:eastAsia=\"Sora\" w:hAnsi=\"Sora\" w:cs=\"Sora\"/>",
+        "<w:rFonts w:ascii=\"Sora\" w:eastAsia=\"Sora\" w:hAnsi=\"Sora\" w:cs=\"Sora\"/>"
+      ],
+      "tableCount": 3,
+      "rowCount": 18
+    }
+  },
+  "converterInfo": {
+    "type": "Microsoft Word COM via PowerShell",
+    "executable": "PowerShell COM (Word.Application)",
+    "version": "MS Word Version: 16.0",
+    "command": "PowerShell COM Word.Application -> SaveAs(17)"
+  },
+  "rawPdf": {
+    "pageCount": 2,
+    "pagesDetails": [
+      {
+        "pageIndex": 1,
+        "width": 595.32,
+        "height": 841.92,
+        "mediaBox": {
+          "x": 0,
+          "y": 0,
+          "width": 595.32,
+          "height": 841.92
+        },
+        "cropBox": {
+          "x": 0,
+          "y": 0,
+          "width": 595.32,
+          "height": 841.92
+        }
+      },
+      {
+        "pageIndex": 2,
+        "width": 595.32,
+        "height": 841.92,
+        "mediaBox": {
+          "x": 0,
+          "y": 0,
+          "width": 595.32,
+          "height": 841.92
+        },
+        "cropBox": {
+          "x": 0,
+          "y": 0,
+          "width": 595.32,
+          "height": 841.92
+        }
+      }
+    ],
+    "fonts": [
+      "/BCDEEE+TimesNewRomanPS-BoldMT",
+      "/BCDFEE+TimesNewRomanPSMT",
+      "/BCDGEE+Calibri",
+      "/BCDHEE+Cambria",
+      "/BCDIEE+Calibri-Bold",
+      "/BCDJEE+TimesNewRomanPS-BoldMT",
+      "/BCDKEE+TimesNewRomanPSMT",
+      "/BCDLEE+Calibri",
+      "/BCDMEE+ArialMT",
+      "/BCDNEE+Cambria-Bold",
+      "/BCDOEE+Microsoft#20Himalaya",
+      "/BCDPEE+Microsoft#20Himalaya"
+    ],
+    "byteLength": 425815,
+    "sha256": "4eb3b0a1dab72286022e4a761842177cbaf613e0b0dfa6d9be4e00d8a6c672fb"
+  },
+  "finalPdf": {
+    "pageCount": 2,
+    "pagesDetails": [
+      {
+        "pageIndex": 1,
+        "width": 595.32,
+        "height": 841.92,
+        "mediaBox": {
+          "x": 0,
+          "y": 0,
+          "width": 595.32,
+          "height": 841.92
+        },
+        "cropBox": {
+          "x": 0,
+          "y": 0,
+          "width": 595.32,
+          "height": 841.92
+        }
+      },
+      {
+        "pageIndex": 2,
+        "width": 595.32,
+        "height": 841.92,
+        "mediaBox": {
+          "x": 0,
+          "y": 0,
+          "width": 595.32,
+          "height": 841.92
+        },
+        "cropBox": {
+          "x": 0,
+          "y": 0,
+          "width": 595.32,
+          "height": 841.92
+        }
+      }
+    ],
+    "fonts": [
+      "/BCDEEE+TimesNewRomanPS-BoldMT",
+      "/BCDFEE+TimesNewRomanPSMT",
+      "/BCDGEE+Calibri",
+      "/BCDHEE+Cambria",
+      "/BCDIEE+Calibri-Bold",
+      "/BCDJEE+TimesNewRomanPS-BoldMT",
+      "/BCDKEE+TimesNewRomanPSMT",
+      "/BCDLEE+Calibri",
+      "/BCDMEE+ArialMT",
+      "/BCDNEE+Cambria-Bold",
+      "/BCDOEE+Microsoft#20Himalaya",
+      "/BCDPEE+Microsoft#20Himalaya"
+    ],
+    "byteLength": 425815,
+    "sha256": "4eb3b0a1dab72286022e4a761842177cbaf613e0b0dfa6d9be4e00d8a6c672fb"
+  }
+}
