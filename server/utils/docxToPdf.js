@@ -3,31 +3,7 @@ import path from "path";
 import fs from "fs/promises";
 import fsSync from "fs";
 import os from "os";
-import PizZip from "pizzip";
 import { PDFDocument, PDFName } from "pdf-lib";
-
-/**
- * Normalizes paragraph line spacing in DOCX XML from inflated values (e.g. 273 dxa = 1.14x)
- * to standard single line spacing (240 dxa = 1.0x) so LibreOffice on Linux renders documents
- * with exact page boundaries as MS Word without trailing line overflow.
- */
-export const normalizeDocxLineSpacing = (docxBuffer) => {
-  try {
-    if (!docxBuffer || docxBuffer.length === 0) return docxBuffer;
-    const zip = new PizZip(docxBuffer);
-    if (zip.files["word/document.xml"]) {
-      let xmlStr = zip.files["word/document.xml"].asText();
-      const updatedXmlStr = xmlStr.replace(/w:line="273"/g, 'w:line="240"');
-      if (updatedXmlStr !== xmlStr) {
-        zip.file("word/document.xml", updatedXmlStr);
-        return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
-      }
-    }
-  } catch (err) {
-    console.warn("Could not normalize DOCX line spacing:", err.message);
-  }
-  return docxBuffer;
-};
 
 /**
  * Trims any trailing blank/empty pages from the PDF buffer.
@@ -154,14 +130,13 @@ const getLibreOfficeExecutable = () => {
  * Converts DOCX buffer to PDF buffer using LibreOffice, falling back to MS Word PowerShell on Windows if needed.
  */
 export const convertDocxToPdf = async (docxBuffer) => {
-  const sanitizedDocxBuffer = normalizeDocxLineSpacing(docxBuffer);
   const tempDir = os.tmpdir();
   const tempId = Math.random().toString(36).substring(7);
   const baseFileName = `doc_${tempId}`;
   const inputPath = path.join(tempDir, `${baseFileName}.docx`);
   const outputPath = path.join(tempDir, `${baseFileName}.pdf`);
 
-  await fs.writeFile(inputPath, sanitizedDocxBuffer);
+  await fs.writeFile(inputPath, docxBuffer);
 
   // Helper for PowerShell fallback on Windows
   const convertWithPowerShell = () => {
@@ -225,37 +200,14 @@ export const convertDocxToPdf = async (docxBuffer) => {
       }
 
       const profileDir = path.join(tempDir, `lo_prof_${tempId}`);
-      const userDir = path.join(profileDir, "user");
       const profileUri = profileDir.replace(/\\/g, "/");
+      const command = `${libreCmd} "-env:UserInstallation=file:///${profileUri}" --headless --convert-to pdf "${inputPath}" --outdir "${tempDir}"`;
 
-      // Write MS Word layout compatibility settings into LibreOffice isolated user profile
-      const setupProfile = async () => {
+      exec(command, async (error, stdout, stderr) => {
+        // Cleanup isolated profile dir
         try {
-          await fs.mkdir(userDir, { recursive: true });
-          const xcuContent = `<?xml version="1.0" encoding="UTF-8"?>
-<oor:items xmlns:oor="http://openoffice.org/2001/registry" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <item oor:path="/org.openoffice.Office.Writer/Layout">
-    <prop oor:name="UsePrinterMetrics" oor:op="fuse"><value>true</value></prop>
-  </item>
-  <item oor:path="/org.openoffice.Office.Common/Filter/PDF/Export">
-    <prop oor:name="UseLosslessCompression" oor:op="fuse"><value>false</value></prop>
-    <prop oor:name="Quality" oor:op="fuse"><value>95</value></prop>
-    <prop oor:name="ReduceImageResolution" oor:op="fuse"><value>false</value></prop>
-    <prop oor:name="ExportFormFields" oor:op="fuse"><value>true</value></prop>
-  </item>
-</oor:items>`;
-          await fs.writeFile(path.join(userDir, "registrymodifications.xcu"), xcuContent, "utf8");
+          await fs.rm(profileDir, { recursive: true, force: true });
         } catch (_) {}
-      };
-
-      setupProfile().then(() => {
-        const command = `${libreCmd} "-env:UserInstallation=file:///${profileUri}" --headless --convert-to pdf:writer_pdf_Export "${inputPath}" --outdir "${tempDir}"`;
-
-        exec(command, async (error, stdout, stderr) => {
-          // Cleanup isolated profile dir
-          try {
-            await fs.rm(profileDir, { recursive: true, force: true });
-          } catch (_) {}
 
         if (error) {
           // If on Windows, attempt PowerShell fallback
@@ -290,7 +242,6 @@ export const convertDocxToPdf = async (docxBuffer) => {
             new Error(`Failed to read converted PDF file: ${readError.message}`)
           );
         }
-        });
       });
     });
   };
