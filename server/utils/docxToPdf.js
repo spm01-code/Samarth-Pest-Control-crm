@@ -3,7 +3,31 @@ import path from "path";
 import fs from "fs/promises";
 import fsSync from "fs";
 import os from "os";
+import PizZip from "pizzip";
 import { PDFDocument, PDFName } from "pdf-lib";
+
+/**
+ * Normalizes paragraph line spacing in DOCX XML from inflated values (e.g. 273 dxa = 1.14x)
+ * to standard single line spacing (240 dxa = 1.0x) so LibreOffice on Linux renders documents
+ * with exact page boundaries as MS Word without trailing line overflow.
+ */
+export const normalizeDocxLineSpacing = (docxBuffer) => {
+  try {
+    if (!docxBuffer || docxBuffer.length === 0) return docxBuffer;
+    const zip = new PizZip(docxBuffer);
+    if (zip.files["word/document.xml"]) {
+      let xmlStr = zip.files["word/document.xml"].asText();
+      const updatedXmlStr = xmlStr.replace(/w:line="273"/g, 'w:line="240"');
+      if (updatedXmlStr !== xmlStr) {
+        zip.file("word/document.xml", updatedXmlStr);
+        return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+      }
+    }
+  } catch (err) {
+    console.warn("Could not normalize DOCX line spacing:", err.message);
+  }
+  return docxBuffer;
+};
 
 /**
  * Trims any trailing blank/empty pages from the PDF buffer.
@@ -130,13 +154,14 @@ const getLibreOfficeExecutable = () => {
  * Converts DOCX buffer to PDF buffer using LibreOffice, falling back to MS Word PowerShell on Windows if needed.
  */
 export const convertDocxToPdf = async (docxBuffer) => {
+  const sanitizedDocxBuffer = normalizeDocxLineSpacing(docxBuffer);
   const tempDir = os.tmpdir();
   const tempId = Math.random().toString(36).substring(7);
   const baseFileName = `doc_${tempId}`;
   const inputPath = path.join(tempDir, `${baseFileName}.docx`);
   const outputPath = path.join(tempDir, `${baseFileName}.pdf`);
 
-  await fs.writeFile(inputPath, docxBuffer);
+  await fs.writeFile(inputPath, sanitizedDocxBuffer);
 
   // Helper for PowerShell fallback on Windows
   const convertWithPowerShell = () => {
