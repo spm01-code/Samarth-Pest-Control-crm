@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { login } from "../../slices/authSlice";
 import { Link, useNavigate } from "react-router-dom";
+import PasswordInput from "../../Components/PasswordInput";
 
 function Login() {
   const dispatch = useDispatch();
@@ -102,8 +103,7 @@ function Login() {
             className="w-full border border-slate-300 rounded-lg p-3 transition focus:border-cyan-600 outline-none"
           />
 
-          <input
-            type="password"
+          <PasswordInput
             name="password"
             placeholder="Password"
             value={formData.password}

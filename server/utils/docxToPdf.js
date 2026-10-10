@@ -1,9 +1,112 @@
+import zlib from "zlib";
 import { exec } from "child_process";
 import path from "path";
 import fs from "fs/promises";
 import fsSync from "fs";
 import os from "os";
 import { PDFDocument, PDFName } from "pdf-lib";
+
+/**
+ * Determines whether a PDF page is genuinely blank (contains no visible text, images, path fills/strokes, or annotations).
+ */
+const isPdfPageBlank = (page, pdfDoc) => {
+  try {
+    const node = page.node;
+
+    // 1. Check annotations (Form fields, links, etc.)
+    const annotsRef = node.get(PDFName.of("Annots"));
+    if (annotsRef) {
+      const annotsObj = pdfDoc.context.lookup(annotsRef);
+      if (annotsObj) {
+        if (Array.isArray(annotsObj.array) && annotsObj.array.length > 0) return false;
+        if (typeof annotsObj.size === "function" && annotsObj.size() > 0) return false;
+      }
+    }
+
+    // 2. Extract and decompress page content streams
+    const contentsRef = node.get(PDFName.of("Contents"));
+    if (!contentsRef) return true;
+
+    const contentsObj = pdfDoc.context.lookup(contentsRef);
+    if (!contentsObj) return true;
+
+    const rawBuffers = [];
+
+    const extractStreamBytes = (streamObj) => {
+      if (!streamObj) return;
+      if (typeof streamObj.getContents === "function") {
+        rawBuffers.push(Buffer.from(streamObj.getContents()));
+      } else if (streamObj.contents) {
+        rawBuffers.push(Buffer.from(streamObj.contents));
+      }
+    };
+
+    if (Array.isArray(contentsObj.array) || typeof contentsObj.size === "function") {
+      const size = typeof contentsObj.size === "function" ? contentsObj.size() : contentsObj.array.length;
+      for (let j = 0; j < size; j++) {
+        const ref = typeof contentsObj.get === "function" ? contentsObj.get(j) : contentsObj.array[j];
+        const streamObj = pdfDoc.context.lookup(ref);
+        extractStreamBytes(streamObj);
+      }
+    } else {
+      extractStreamBytes(contentsObj);
+    }
+
+    let fullStreamText = "";
+    for (const buf of rawBuffers) {
+      if (!buf || buf.length === 0) continue;
+      let decoded = "";
+      try {
+        decoded = zlib.inflateSync(buf).toString("latin1");
+      } catch (_) {
+        try {
+          decoded = zlib.unzipSync(buf).toString("latin1");
+        } catch (_) {
+          try {
+            decoded = zlib.rawInflateSync(buf).toString("latin1");
+          } catch (_) {
+            decoded = buf.toString("latin1");
+          }
+        }
+      }
+      fullStreamText += decoded + "\n";
+    }
+
+    if (!fullStreamText || fullStreamText.trim().length === 0) return true;
+
+    // 3. Check for XObject invocation (Images / Form XObjects)
+    if (/\bDo\b/.test(fullStreamText)) return false;
+
+    // 4. Check for Path Painting / Fill / Stroke operators (f, F, f*, S, s, B, B*, b, b*, sh)
+    if (/\b(f|F|f\*|S|s|B|B\*|b|b\*|sh)\b/.test(fullStreamText)) return false;
+
+    // 5. Check for actual visible text contents in Tj / TJ / ' / " operators
+    const tjRegex = /\[([\s\S]*?)\]\s*TJ|\(([\s\S]*?)\)\s*Tj|<([0-9a-fA-F\s]+)>\s*Tj/g;
+    let visibleTextCharCount = 0;
+    let match;
+
+    while ((match = tjRegex.exec(fullStreamText)) !== null) {
+      const rawContent = match[1] || match[2] || match[3] || "";
+      const cleaned = rawContent
+        .replace(/-?\d+(\.\d+)?/g, "")
+        .replace(/<[0-9a-fA-F]+>/g, (hexMatch) => {
+          const hexStr = hexMatch.replace(/[<>]/g, "");
+          if (hexStr === "0003" || hexStr === "0000" || hexStr === "0020") return "";
+          return hexStr;
+        })
+        .replace(/[\(\)\[\]\s\\\r\n]/g, "");
+
+      if (cleaned.length > 0) {
+        visibleTextCharCount += cleaned.length;
+      }
+    }
+
+    return visibleTextCharCount === 0;
+  } catch (err) {
+    console.warn("isPdfPageBlank analysis error:", err.message);
+    return false; // Safely default to keeping the page if analysis fails
+  }
+};
 
 /**
  * Trims any trailing blank/empty pages from the PDF buffer.
@@ -19,58 +122,7 @@ export const trimTrailingBlankPages = async (pdfBuffer) => {
 
     for (let i = pageCount - 1; i > 0; i--) {
       const page = pdfDoc.getPage(i);
-      const node = page.node;
-
-      // Check annotations - if page has annotations, keep it
-      const annotsRef = node.get(PDFName.of("Annots"));
-      if (annotsRef) {
-        const annotsObj = pdfDoc.context.lookup(annotsRef);
-        if (annotsObj) {
-          // Has annotations (form fields, links, etc.) -> NOT blank
-          break;
-        }
-      }
-
-      const contentsRef = node.get(PDFName.of("Contents"));
-      if (!contentsRef) {
-        pagesToRemove.push(i);
-        continue;
-      }
-
-      const contentsObj = pdfDoc.context.lookup(contentsRef);
-      let combinedStreamStr = "";
-
-      if (Array.isArray(contentsObj?.array) || (contentsObj && typeof contentsObj.size === "function")) {
-        // Contents is a PDFArray of stream references
-        const size = typeof contentsObj.size === "function" ? contentsObj.size() : contentsObj.array.length;
-        for (let j = 0; j < size; j++) {
-          const streamRef = typeof contentsObj.get === "function" ? contentsObj.get(j) : contentsObj.array[j];
-          const stream = pdfDoc.context.lookup(streamRef);
-          if (stream && stream.contents) {
-            combinedStreamStr += Buffer.from(stream.contents).toString("utf8") + "\n";
-          } else if (stream && typeof stream.toString === "function") {
-            combinedStreamStr += stream.toString() + "\n";
-          }
-        }
-      } else if (contentsObj && contentsObj.contents) {
-        combinedStreamStr = Buffer.from(contentsObj.contents).toString("utf8");
-      } else if (contentsObj && typeof contentsObj.toString === "function") {
-        combinedStreamStr = contentsObj.toString();
-      }
-
-      let isBlank = false;
-      if (!combinedStreamStr || combinedStreamStr.trim().length === 0) {
-        isBlank = true;
-      } else {
-        const hasTextOrImage = /\b(Tj|TJ|'|"|Do)\b/.test(combinedStreamStr);
-        const hasDrawingOps = /\b(re|m|l|c|S|f|B|W|n)\b/.test(combinedStreamStr);
-        const nonWhitespaceLen = combinedStreamStr.replace(/\s+/g, "").length;
-
-        // Conservative rule: If it has text/image, drawing operators, or significant stream size (> 50 bytes), it's NOT blank.
-        if (!hasTextOrImage && !hasDrawingOps && nonWhitespaceLen <= 50) {
-          isBlank = true;
-        }
-      }
+      const isBlank = isPdfPageBlank(page, pdfDoc);
 
       if (isBlank) {
         pagesToRemove.push(i);

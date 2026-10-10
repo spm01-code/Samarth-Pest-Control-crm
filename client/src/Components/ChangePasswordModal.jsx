@@ -8,6 +8,7 @@ import {
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { useBodyScrollLock } from "../utils/useBodyScrollLock";
+import PasswordInput from "./PasswordInput";
 
 function maskEmail(email) {
   if (!email || typeof email !== "string" || !email.includes("@")) {
@@ -246,8 +247,7 @@ function ChangePasswordModal({ isOpen, onClose }) {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Current Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   name="currentPassword"
                   required
                   value={passwords.currentPassword}
@@ -263,8 +263,7 @@ function ChangePasswordModal({ isOpen, onClose }) {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   New Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   name="newPassword"
                   required
                   value={passwords.newPassword}
@@ -279,8 +278,7 @@ function ChangePasswordModal({ isOpen, onClose }) {
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Confirm New Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
                   name="confirmPassword"
                   required
                   value={passwords.confirmPassword}

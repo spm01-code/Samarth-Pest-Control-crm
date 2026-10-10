@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { register } from "../../slices/authSlice";
 import { useNavigate, Link } from "react-router-dom";
 import VerifyEmailModal from "../../Components/VerifyEmailModal";
+import PasswordInput from "../../Components/PasswordInput";
 
 function Register() {
   const dispatch = useDispatch();
@@ -128,8 +129,7 @@ function Register() {
             className="w-full border border-slate-300 rounded-lg p-3 transition focus:border-cyan-600 outline-none"
           />
 
-          <input
-            type="password"
+          <PasswordInput
             name="password"
             placeholder="Password"
             value={formData.password}
