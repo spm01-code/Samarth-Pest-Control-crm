@@ -200,14 +200,35 @@ export const convertDocxToPdf = async (docxBuffer) => {
       }
 
       const profileDir = path.join(tempDir, `lo_prof_${tempId}`);
+      const userDir = path.join(profileDir, "user");
       const profileUri = profileDir.replace(/\\/g, "/");
-      const command = `${libreCmd} "-env:UserInstallation=file:///${profileUri}" --headless --convert-to pdf "${inputPath}" --outdir "${tempDir}"`;
 
-      exec(command, async (error, stdout, stderr) => {
-        // Cleanup isolated profile dir
+      const setupProfile = async () => {
         try {
-          await fs.rm(profileDir, { recursive: true, force: true });
+          await fs.mkdir(userDir, { recursive: true });
+          const xcuContent = `<?xml version="1.0" encoding="UTF-8"?>
+<oor:items xmlns:oor="http://openoffice.org/2001/registry" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <item oor:path="/org.openoffice.Office.Writer/Layout">
+    <prop oor:name="UsePrinterMetrics" oor:op="fuse"><value>true</value></prop>
+  </item>
+  <item oor:path="/org.openoffice.Office.Common/Filter/PDF/Export">
+    <prop oor:name="UseLosslessCompression" oor:op="fuse"><value>false</value></prop>
+    <prop oor:name="Quality" oor:op="fuse"><value>95</value></prop>
+    <prop oor:name="ExportFormFields" oor:op="fuse"><value>true</value></prop>
+  </item>
+</oor:items>`;
+          await fs.writeFile(path.join(userDir, "registrymodifications.xcu"), xcuContent, "utf8");
         } catch (_) {}
+      };
+
+      setupProfile().then(() => {
+        const command = `${libreCmd} "-env:UserInstallation=file:///${profileUri}" --headless --convert-to pdf:writer_pdf_Export "${inputPath}" --outdir "${tempDir}"`;
+
+        exec(command, async (error, stdout, stderr) => {
+          // Cleanup isolated profile dir
+          try {
+            await fs.rm(profileDir, { recursive: true, force: true });
+          } catch (_) {}
 
         if (error) {
           // If on Windows, attempt PowerShell fallback
@@ -242,6 +263,7 @@ export const convertDocxToPdf = async (docxBuffer) => {
             new Error(`Failed to read converted PDF file: ${readError.message}`)
           );
         }
+        });
       });
     });
   };
