@@ -23,7 +23,7 @@ export const uploadTemplate = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "DOCX template file is required",
+        message: "Template file (.docx or .pdf) is required",
       });
     }
 

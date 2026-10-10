@@ -330,8 +330,8 @@ function Settings() {
 
     const file = newTemplate.file;
     const extension = file.name.split('.').pop().toLowerCase();
-    if (extension !== 'docx') {
-      toast.warning("Only .docx files are allowed!");
+    if (extension !== 'docx' && extension !== 'pdf') {
+      toast.warning("Only .docx and .pdf template files are allowed!");
       return;
     }
 
@@ -955,12 +955,12 @@ function Settings() {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">
-                    Template DOCX File
+                    Template File (.docx or .pdf)
                   </label>
                   <input
                     type="file"
                     required
-                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    accept=".docx,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf"
                     onChange={(e) => {
                       const file = e.target.files[0];
                       setNewTemplate({ ...newTemplate, file });
@@ -968,9 +968,7 @@ function Settings() {
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 outline-none focus:border-blue-600 text-sm"
                   />
                   <span className="text-[10px] text-slate-400 mt-1 block">
-                    Only .docx template files are supported. Needs to contain tags
-                    like {"{{companyName}}"}, {"{{customerName}}"},{" "}
-                    {"{{totalAmount}}"}, etc.
+                    Upload a .docx or .pdf template file. Needs to contain placeholders like {"{companyName}"}, {"{customerName}"}, {"{totalAmount}"}, etc.
                   </span>
                 </div>
 

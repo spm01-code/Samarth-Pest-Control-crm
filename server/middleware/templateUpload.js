@@ -35,12 +35,18 @@ const fileFilter = (req, file, cb) => {
 
   const isDocx =
     extension === ".docx" &&
-    file.mimetype ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    (file.mimetype ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      file.mimetype === "application/octet-stream");
 
-  if (!isDocx) {
+  const isPdf =
+    extension === ".pdf" &&
+    (file.mimetype === "application/pdf" ||
+      file.mimetype === "application/x-pdf");
+
+  if (!isDocx && !isPdf) {
     return cb(
-      new Error("Only .docx files are allowed")
+      new Error("Only .docx and .pdf template files are allowed")
     );
   }
 

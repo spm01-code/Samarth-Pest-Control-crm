@@ -269,6 +269,13 @@ export const generateQuotationDocx = async (req, res) => {
 
     const fileName = `${quotationNumber}.docx`;
 
+    if (result.isPdfDirect) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${quotationNumber}.pdf"`);
+      res.setHeader("Content-Length", result.buffer.length);
+      return res.send(result.buffer);
+    }
+
     // --------------------------------------------------------
     // Response headers
     // --------------------------------------------------------
@@ -311,7 +318,6 @@ export const generateQuotationPdf = async (req, res) => {
     }
 
     const docxResult = await generateQuotationDocxFile(quotation);
-    const pdfBuffer = await convertDocxToPdf(docxResult.buffer);
 
     const quotationNumber =
       quotation.quotationNumber ||
@@ -320,6 +326,15 @@ export const generateQuotationPdf = async (req, res) => {
       `quotation-${quotation._id}`;
 
     const fileName = `${quotationNumber}.pdf`;
+
+    if (docxResult.isPdfDirect) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);
+      res.setHeader("Content-Length", docxResult.buffer.length);
+      return res.send(docxResult.buffer);
+    }
+
+    const pdfBuffer = await convertDocxToPdf(docxResult.buffer);
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="${fileName}"`);

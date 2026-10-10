@@ -5,6 +5,7 @@ import Docxtemplater from "docxtemplater";
 
 import DocumentTemplate from "../model/documentTemplateModel.js";
 import CompanySetting from "../model/companySettingModel.js";
+import { generatePdfFromPdfTemplate } from "./pdfTemplateGenerator.js";
 
 // ============================================================
 // HELPERS
@@ -1047,11 +1048,13 @@ export const generateQuotationDocx = async (quotation) => {
 
     const template = await getActiveTemplate("quotation");
 
+    const isPdfTemplate =
+      template?.mimeType === "application/pdf" ||
+      (template?.filePath && template.filePath.toLowerCase().endsWith(".pdf"));
+
     const companySettings = await getCompanySettings();
 
     const companyData = buildCompanyData(companySettings);
-
-    const doc = loadDocxTemplate(template.filePath);
 
     const customerData = buildCustomerData(quotation.customer);
 
@@ -1152,6 +1155,19 @@ export const generateQuotationDocx = async (quotation) => {
 
       services,
     };
+
+    if (isPdfTemplate) {
+      const pdfBuffer = await generatePdfFromPdfTemplate(template.filePath, data);
+      return {
+        buffer: pdfBuffer,
+        template,
+        documentType: "quotation",
+        data,
+        isPdfDirect: true,
+      };
+    }
+
+    const doc = loadDocxTemplate(template.filePath);
 
     doc.render(data);
 
