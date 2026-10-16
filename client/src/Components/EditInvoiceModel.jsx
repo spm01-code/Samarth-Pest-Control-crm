@@ -1,19 +1,17 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { updateInvoice } from "../slices/invoiceSlice";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
-
-const formatDateForInput = (date) => {
-  if (!date) return "";
-
-  return new Date(date).toISOString().slice(0, 10);
-};
+import { formatDateForInput } from "../utils/dateUtils";
 
 const getInitialFormData = (invoice) => {
+  const hasIgst = (invoice?.tax?.igstPercentage > 0 || invoice?.tax?.igstAmount > 0);
   return {
+    invoiceNumber: invoice?.invoiceNumber || "",
     invoiceType: invoice?.invoiceType || "GST",
+    taxMode: hasIgst ? "INTER_STATE" : "INTRA_STATE",
     dueDate: formatDateForInput(invoice?.dueDate),
     workOrderNumber: invoice?.workOrderNumber || "",
     workOrderDate: formatDateForInput(invoice?.workOrderDate),
@@ -49,6 +47,7 @@ function EditInvoiceModal({
   onUpdated,
 }) {
   const dispatch = useDispatch();
+  const { invoices } = useSelector((state) => state.invoice);
 
   const [formData, setFormData] = useState(
     getInitialFormData(invoice)
@@ -61,20 +60,72 @@ function EditInvoiceModal({
     });
   };
 
+  const handleTaxModeChange = (mode) => {
+    if (mode === "INTER_STATE") {
+      const combinedRate =
+        Number(formData.cgstPercentage || 0) + Number(formData.sgstPercentage || 0);
+      setFormData((prev) => ({
+        ...prev,
+        taxMode: "INTER_STATE",
+        igstPercentage: combinedRate > 0 ? combinedRate : 18,
+        cgstPercentage: 0,
+        sgstPercentage: 0,
+      }));
+    } else {
+      const igst = Number(formData.igstPercentage || 0);
+      const splitRate = igst > 0 ? Number((igst / 2).toFixed(2)) : 9;
+      setFormData((prev) => ({
+        ...prev,
+        taxMode: "INTRA_STATE",
+        cgstPercentage: splitRate,
+        sgstPercentage: splitRate,
+        igstPercentage: 0,
+      }));
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const trimmedInvoiceNumber = String(formData.invoiceNumber || "").trim();
+    if (!trimmedInvoiceNumber) {
+      toast.error("Invoice number is required.");
+      return;
+    }
+
+    // Frontend duplicate check (excluding the current invoice being edited)
+    const isDuplicate = Array.isArray(invoices) && invoices.some(
+      (inv) =>
+        inv._id !== invoice._id &&
+        inv.invoiceNumber?.trim().toLowerCase() === trimmedInvoiceNumber.toLowerCase()
+    );
+
+    if (isDuplicate) {
+      toast.error(
+        "This invoice number already exists. Please enter a different invoice number."
+      );
+      return;
+    }
 
     const amountPaid = Number(
       formData.amountPaid || 0
     );
 
+    const isNonGst = formData.invoiceType === "NON_GST";
     const invoiceData = {
       ...formData,
+      invoiceNumber: trimmedInvoiceNumber,
       amountPaid,
       balanceAmount:
         Number(invoice.totalAmount || 0) -
         amountPaid,
+      ...(isNonGst
+        ? { cgstPercentage: 0, sgstPercentage: 0, igstPercentage: 0 }
+        : formData.taxMode === "INTER_STATE"
+        ? { cgstPercentage: 0, sgstPercentage: 0, igstPercentage: Number(formData.igstPercentage || 0) }
+        : { cgstPercentage: Number(formData.cgstPercentage || 0), sgstPercentage: Number(formData.sgstPercentage || 0), igstPercentage: 0 }),
     };
+    delete invoiceData.taxMode;
 
     if (!invoiceData.paymentMethod) {
       delete invoiceData.paymentMethod;
@@ -134,12 +185,25 @@ function EditInvoiceModal({
           onSubmit={handleSubmit}
           className="space-y-6"
         >
-          <div>
-            <label className="block mb-1 font-medium">Invoice Type</label>
-            <select name="invoiceType" value={formData.invoiceType} onChange={handleChange} className="w-full max-w-xs border rounded-lg p-2">
-              <option value="GST">GST Invoice</option>
-              <option value="NON_GST">Without GST</option>
-            </select>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block mb-1 font-medium">Invoice Number</label>
+              <input
+                type="text"
+                name="invoiceNumber"
+                value={formData.invoiceNumber}
+                onChange={handleChange}
+                required
+                className="w-full border rounded-lg p-2 font-mono font-bold text-slate-800"
+              />
+            </div>
+            <div>
+              <label className="block mb-1 font-medium">Invoice Type</label>
+              <select name="invoiceType" value={formData.invoiceType} onChange={handleChange} className="w-full border rounded-lg p-2">
+                <option value="GST">GST Invoice</option>
+                <option value="NON_GST">Without GST</option>
+              </select>
+            </div>
           </div>
           <div className="grid md:grid-cols-3 gap-4">
             <div>
@@ -318,19 +382,76 @@ function EditInvoiceModal({
           </div>
 
           {formData.invoiceType === "GST" && (
-            <div className="grid md:grid-cols-3 gap-4">
-              <div>
-                <label className="block mb-1 font-medium">CGST %</label>
-                <input type="number" min="0" step="0.01" name="cgstPercentage" value={formData.cgstPercentage} onChange={handleChange} className="w-full border rounded-lg p-2" />
+            <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <label className="font-semibold text-slate-800 text-sm">Tax Mode</label>
+                <div className="inline-flex rounded-lg border bg-white p-1" role="group" aria-label="Tax mode">
+                  <button
+                    type="button"
+                    onClick={() => handleTaxModeChange("INTRA_STATE")}
+                    className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                      formData.taxMode !== "INTER_STATE"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Intra-State (CGST + SGST)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTaxModeChange("INTER_STATE")}
+                    className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                      formData.taxMode === "INTER_STATE"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Inter-State (IGST)
+                  </button>
+                </div>
               </div>
-              <div>
-                <label className="block mb-1 font-medium">SGST %</label>
-                <input type="number" min="0" step="0.01" name="sgstPercentage" value={formData.sgstPercentage} onChange={handleChange} className="w-full border rounded-lg p-2" />
-              </div>
-              <div>
-                <label className="block mb-1 font-medium">IGST %</label>
-                <input type="number" min="0" step="0.01" name="igstPercentage" value={formData.igstPercentage} onChange={handleChange} className="w-full border rounded-lg p-2" />
-              </div>
+
+              {formData.taxMode === "INTER_STATE" ? (
+                <div>
+                  <label className="block mb-1 text-xs font-medium text-slate-700">IGST %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    name="igstPercentage"
+                    value={formData.igstPercentage}
+                    onChange={handleChange}
+                    className="w-full max-w-xs border rounded-lg p-2 bg-white"
+                  />
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block mb-1 text-xs font-medium text-slate-700">CGST %</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      name="cgstPercentage"
+                      value={formData.cgstPercentage}
+                      onChange={handleChange}
+                      className="w-full border rounded-lg p-2 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-xs font-medium text-slate-700">SGST %</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      name="sgstPercentage"
+                      value={formData.sgstPercentage}
+                      onChange={handleChange}
+                      className="w-full border rounded-lg p-2 bg-white"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

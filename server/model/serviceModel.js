@@ -5,7 +5,31 @@ const serviceSchema = new mongoose.Schema(
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
-      required: true,
+      required: false,
+      validate: {
+        validator: function (v) {
+          if (this && this.frequency) {
+            const freq = String(this.frequency).trim().toLowerCase();
+            if (
+              freq === "one-time" ||
+              freq === "onetime" ||
+              freq === "one time" ||
+              freq === "one-time-job" ||
+              freq === "onetimejob" ||
+              freq === "one time job"
+            ) {
+              return true;
+            }
+            return v != null;
+          }
+          return true;
+        },
+        message: "Customer is required for recurring services",
+      },
+    },
+    customerName: {
+      type: String,
+      trim: true,
     },
     employee: {
       type: mongoose.Schema.Types.ObjectId,

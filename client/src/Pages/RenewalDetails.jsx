@@ -8,6 +8,7 @@ import DocumentPreviewModal from "../Components/DocumentPreviewModal";
 import CreateRenewalModal from "../Components/CreateRenewalModal";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { formatDateOnly as formatDate } from "../utils/dateUtils";
 
 function RenewalDetails() {
   const { id } = useParams();
@@ -49,17 +50,7 @@ function RenewalDetails() {
 
 
 
-  const formatDate = (date) => {
-    if (!date) return "-";
-    const parsedDate = new Date(date);
-    return Number.isNaN(parsedDate.getTime())
-      ? "-"
-      : parsedDate.toLocaleDateString("en-IN", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        });
-  };
+
 
   const formatAmount = (amount) =>
     Number(amount || 0).toLocaleString("en-IN", {

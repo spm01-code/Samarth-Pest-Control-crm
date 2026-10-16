@@ -39,6 +39,7 @@ const formatDate = (date) => {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    timeZone: "Asia/Kolkata",
   }).format(parsedDate);
 };
 
@@ -651,7 +652,7 @@ const resolveCgstPercentage = (invoice) => {
   const isGst = invoice?.invoiceType === "GST";
   if (!isGst) return "0";
 
-  let pct = Number(invoice?.tax?.cgstPercentage || invoice?.cgstPercentage || 0);
+  let pct = Number(invoice?.tax?.cgstPercentage || invoice?.cgstPercentage || invoice?.cgstRate || invoice?.tax?.cgstRate || 0);
 
   if (!pct || pct === 0) {
     const amount = Number(invoice?.tax?.cgstAmount || invoice?.cgstAmount || 0);
@@ -668,7 +669,7 @@ const resolveSgstPercentage = (invoice) => {
   const isGst = invoice?.invoiceType === "GST";
   if (!isGst) return "0";
 
-  let pct = Number(invoice?.tax?.sgstPercentage || invoice?.sgstPercentage || 0);
+  let pct = Number(invoice?.tax?.sgstPercentage || invoice?.sgstPercentage || invoice?.sgstRate || invoice?.tax?.sgstRate || 0);
 
   if (!pct || pct === 0) {
     const amount = Number(invoice?.tax?.sgstAmount || invoice?.sgstAmount || 0);
@@ -685,7 +686,7 @@ const resolveIgstPercentage = (invoice) => {
   const isGst = invoice?.invoiceType === "GST";
   if (!isGst) return "0";
 
-  let pct = Number(invoice?.tax?.igstPercentage || invoice?.igstPercentage || 0);
+  let pct = Number(invoice?.tax?.igstPercentage || invoice?.igstPercentage || invoice?.igstRate || invoice?.tax?.igstRate || 0);
 
   if (!pct || pct === 0) {
     const amount = Number(invoice?.tax?.igstAmount || invoice?.igstAmount || 0);
@@ -758,9 +759,21 @@ export const generateInvoiceDocx = async (invoice) => {
       ? companySettings?.gstAccountNumber || ""
       : companySettings?.nonGstAccountNumber || "";
 
-    const cgstPctStr = resolveCgstPercentage(invoice);
-    const sgstPctStr = resolveSgstPercentage(invoice);
-    const igstPctStr = resolveIgstPercentage(invoice);
+    const rawCgstPctStr = resolveCgstPercentage(invoice);
+    const rawSgstPctStr = resolveSgstPercentage(invoice);
+    const rawIgstPctStr = resolveIgstPercentage(invoice);
+
+    // Enforce mutual exclusivity for tax rendering:
+    // If IGST rate > 0, treat as inter-state and zero-out CGST/SGST display.
+    // If CGST/SGST > 0, zero-out IGST display.
+    const isInterState = isGstInvoice && Number(rawIgstPctStr) > 0;
+    const cgstPctStr = isInterState ? "0" : rawCgstPctStr;
+    const sgstPctStr = isInterState ? "0" : rawSgstPctStr;
+    const igstPctStr = isInterState ? rawIgstPctStr : "0";
+
+    const cgstAmt = isGstInvoice && !isInterState ? formatAmount(invoice.tax?.cgstAmount || invoice.cgstAmount) : "0.00";
+    const sgstAmt = isGstInvoice && !isInterState ? formatAmount(invoice.tax?.sgstAmount || invoice.sgstAmount) : "0.00";
+    const igstAmt = isGstInvoice && isInterState ? formatAmount(invoice.tax?.igstAmount || invoice.igstAmount) : "0.00";
 
     // ------------------------------------------------------
     // Data
@@ -826,19 +839,39 @@ export const generateInvoiceDocx = async (invoice) => {
 
       cgstRate: cgstPctStr,
 
-      cgstAmount: isGstInvoice ? formatAmount(invoice.tax?.cgstAmount || invoice.cgstAmount) : "0.00",
+      cgstAmount: cgstAmt,
 
       sgstPercentage: sgstPctStr,
 
       sgstRate: sgstPctStr,
 
-      sgstAmount: isGstInvoice ? formatAmount(invoice.tax?.sgstAmount || invoice.sgstAmount) : "0.00",
+      sgstAmount: sgstAmt,
 
       igstPercentage: igstPctStr,
 
       igstRate: igstPctStr,
 
-      igstAmount: isGstInvoice ? formatAmount(invoice.tax?.igstAmount || invoice.igstAmount) : "0.00",
+      igstAmount: igstAmt,
+
+      igstTotal: igstAmt,
+
+      totalIgst: igstAmt,
+
+      IGST: igstAmt,
+
+      IGST_RATE: igstPctStr,
+
+      IGST_AMOUNT: igstAmt,
+
+      isIgst: isInterState,
+
+      hasIgst: isInterState,
+
+      isCgstSgst: isGstInvoice && !isInterState && (Number(cgstPctStr) > 0 || Number(sgstPctStr) > 0),
+
+      hasCgstSgst: isGstInvoice && !isInterState && (Number(cgstPctStr) > 0 || Number(sgstPctStr) > 0),
+
+      taxType: isInterState ? "IGST" : "CGST/SGST",
 
       totalAmount: formatAmount(invoice.totalAmount),
 
@@ -1645,7 +1678,11 @@ export const generateOneTimeJobDocx = async (service) => {
         return raw.replace(/^job\s*no[\.\s\-\/:]*/i, "");
       })(),
 
-      customerName: customerData.customerName || "Customer",
+      customerName: firstValue(
+        service.customerName,
+        customerData.customerName,
+        "Customer"
+      ),
 
       customerAddress: firstValue(
         service.address,
@@ -1662,6 +1699,7 @@ export const generateOneTimeJobDocx = async (service) => {
       contactPerson: firstValue(
         service.contactPerson,
         customer.contactPerson,
+        service.customerName,
         customerData.customerName,
         ""
       ),

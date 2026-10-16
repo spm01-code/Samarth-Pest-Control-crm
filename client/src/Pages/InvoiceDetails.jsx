@@ -10,6 +10,7 @@ import DocumentPreviewModal from "../Components/DocumentPreviewModal";
 import { FaArrowLeft } from "react-icons/fa";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { formatDateOnly as formatDate, formatTimestamp } from "../utils/dateUtils";
 
 function InvoiceDetails() {
   const { id } = useParams();
@@ -42,12 +43,6 @@ function InvoiceDetails() {
       default:
         return "bg-blue-100 text-blue-700";
     }
-  };
-
-  const formatDate = (date) => {
-    if (!date) return "-";
-
-    return new Date(date).toLocaleDateString("en-IN");
   };
 
   const numberToWords = (amount) => {
@@ -298,15 +293,11 @@ function InvoiceDetails() {
             </p>
 
             <p>
-              <strong>Invoice Date:</strong>{" "}
-              {new Date(invoice.invoiceDate).toLocaleDateString()}
+              <strong>Invoice Date:</strong> {formatDate(invoice.invoiceDate)}
             </p>
 
             <p>
-              <strong>Due Date:</strong>{" "}
-              {invoice.dueDate
-                ? new Date(invoice.dueDate).toLocaleDateString()
-                : "-"}
+              <strong>Due Date:</strong> {formatDate(invoice.dueDate)}
             </p>
 
             <p>
@@ -330,7 +321,7 @@ function InvoiceDetails() {
 
             <p>
               <strong>Created:</strong>{" "}
-              {new Date(invoice.createdAt).toLocaleString()}
+              {formatTimestamp(invoice.createdAt, "-", true)}
             </p>
           </div>
         </div>
@@ -507,10 +498,7 @@ function InvoiceDetails() {
           </p>
 
           <p>
-            <strong>Payment Date:</strong>{" "}
-            {invoice.paymentDate
-              ? new Date(invoice.paymentDate).toLocaleDateString()
-              : "-"}
+            <strong>Payment Date:</strong> {formatDate(invoice.paymentDate)}
           </p>
 
           <p>

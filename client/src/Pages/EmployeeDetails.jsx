@@ -6,6 +6,7 @@ import { fetchEmployeeAttendance } from "../slices/attendanceSlice";
 import CreateEmployeeModel from "../Components/CreateEmployeeModel";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { formatDateOnly, formatTimestamp } from "../utils/dateUtils";
 import { FaArrowLeft, FaEdit, FaTrash } from "react-icons/fa";
 
 function EmployeeDetails() {
@@ -222,9 +223,7 @@ function EmployeeDetails() {
               Joining Date
             </p>
             <p className="font-medium">
-              {new Date(
-                employee.joiningDate
-              ).toLocaleDateString()}
+              {formatDateOnly(employee.joiningDate)}
             </p>
           </div>
 
@@ -242,9 +241,7 @@ function EmployeeDetails() {
               Created At
             </p>
             <p className="font-medium">
-              {new Date(
-                employee.createdAt
-              ).toLocaleString()}
+              {formatTimestamp(employee.createdAt, "-", true)}
             </p>
           </div>
 
@@ -253,9 +250,7 @@ function EmployeeDetails() {
               Updated At
             </p>
             <p className="font-medium">
-              {new Date(
-                employee.updatedAt
-              ).toLocaleString()}
+              {formatTimestamp(employee.updatedAt, "-", true)}
             </p>
           </div>
         </div>

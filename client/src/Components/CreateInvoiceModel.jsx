@@ -6,6 +6,7 @@ import { fetchCustomers } from "../slices/customerSlice";
 import { fetchServices } from "../slices/serviceSlice";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { fetchCompanySettingsAPI } from "../API/companySettingAPI";
 import ServiceSelectDropdown from "./ServiceSelectDropdown";
 
 function CreateInvoiceModal({
@@ -25,8 +26,13 @@ function CreateInvoiceModal({
   const [customerSearch, setCustomerSearch] = useState(initialCustName);
 
   const { customers = [] } = useSelector((state) => state.customer);
-
   const { services = [] } = useSelector((state) => state.services);
+  const token = useSelector((state) => state.auth?.token);
+
+  const [companyDefaults, setCompanyDefaults] = useState({
+    hsn: "",
+    sac: "",
+  });
 
   const [formData, setFormData] = useState({
     invoiceType: "GST",
@@ -48,6 +54,7 @@ function CreateInvoiceModal({
     cgstPercentage: 9,
     sgstPercentage: 9,
     igstPercentage: 0,
+    taxMode: "INTRA_STATE",
     dueDate: "",
     notes: "",
   });
@@ -78,8 +85,27 @@ function CreateInvoiceModal({
           treatmentType: prev.treatmentType || initialService?.serviceName || "",
         };
       });
+
+      if (token) {
+        fetchCompanySettingsAPI(token)
+          .then((data) => {
+            if (data?.success && data?.settings) {
+              const hsn = data.settings.defaultHsnCode || "998531";
+              const sac = data.settings.defaultSacCode || "9985";
+              setCompanyDefaults({ hsn, sac });
+              setFormData((prev) => ({
+                ...prev,
+                hsnCode: prev.hsnCode || hsn,
+                sacCode: prev.sacCode || sac,
+              }));
+            }
+          })
+          .catch((err) => {
+            console.error("Failed to load company tax settings:", err);
+          });
+      }
     }
-  }, [dispatch, isOpen, initialCustomer, initialService]);
+  }, [dispatch, isOpen, initialCustomer, initialService, token]);
 
   const handleChange = (e) => {
     setFormData({
@@ -94,8 +120,34 @@ function CreateInvoiceModal({
       invoiceType,
       ...(invoiceType === "NON_GST"
         ? { gstNumber: "", hsnCode: "", sacCode: "", cgstPercentage: 0, sgstPercentage: 0, igstPercentage: 0 }
+        : current.taxMode === "INTER_STATE"
+        ? { cgstPercentage: 0, sgstPercentage: 0, igstPercentage: 18 }
         : { cgstPercentage: 9, sgstPercentage: 9, igstPercentage: 0 }),
     }));
+  };
+
+  const handleTaxModeChange = (mode) => {
+    if (mode === "INTER_STATE") {
+      const combined =
+        Number(formData.cgstPercentage || 0) + Number(formData.sgstPercentage || 0);
+      setFormData((prev) => ({
+        ...prev,
+        taxMode: "INTER_STATE",
+        igstPercentage: combined > 0 ? combined : 18,
+        cgstPercentage: 0,
+        sgstPercentage: 0,
+      }));
+    } else {
+      const igst = Number(formData.igstPercentage || 0);
+      const splitRate = igst > 0 ? Number((igst / 2).toFixed(2)) : 9;
+      setFormData((prev) => ({
+        ...prev,
+        taxMode: "INTRA_STATE",
+        cgstPercentage: splitRate,
+        sgstPercentage: splitRate,
+        igstPercentage: 0,
+      }));
+    }
   };
 
   const handleServiceToggle = (serviceId) => {
@@ -131,11 +183,10 @@ function CreateInvoiceModal({
   const subtotal = existingSubtotal + customSubtotal;
 
   const isGstInvoice = formData.invoiceType === "GST";
-  const cgst = isGstInvoice ? (subtotal * Number(formData.cgstPercentage)) / 100 : 0;
-
-  const sgst = isGstInvoice ? (subtotal * Number(formData.sgstPercentage)) / 100 : 0;
-
-  const igst = isGstInvoice ? (subtotal * Number(formData.igstPercentage)) / 100 : 0;
+  const isInterState = isGstInvoice && formData.taxMode === "INTER_STATE";
+  const cgst = isGstInvoice && !isInterState ? (subtotal * Number(formData.cgstPercentage || 0)) / 100 : 0;
+  const sgst = isGstInvoice && !isInterState ? (subtotal * Number(formData.sgstPercentage || 0)) / 100 : 0;
+  const igst = isGstInvoice && isInterState ? (subtotal * Number(formData.igstPercentage || 0)) / 100 : 0;
 
   const total = subtotal + cgst + sgst + igst;
 
@@ -228,11 +279,20 @@ function CreateInvoiceModal({
     e.preventDefault();
 
     try {
+      const isNonGst = formData.invoiceType === "NON_GST";
+      const payload = {
+        ...formData,
+        amountInWords: displayAmountInWords,
+        ...(isNonGst
+          ? { cgstPercentage: 0, sgstPercentage: 0, igstPercentage: 0 }
+          : formData.taxMode === "INTER_STATE"
+          ? { cgstPercentage: 0, sgstPercentage: 0, igstPercentage: Number(formData.igstPercentage || 0) }
+          : { cgstPercentage: Number(formData.cgstPercentage || 0), sgstPercentage: Number(formData.sgstPercentage || 0), igstPercentage: 0 }),
+      };
+      delete payload.taxMode;
+
       const res = await dispatch(
-        createInvoice({
-          ...formData,
-          amountInWords: displayAmountInWords,
-        }),
+        createInvoice(payload),
       ).unwrap();
 
       onCreated?.(res?.invoice || res);
@@ -262,7 +322,12 @@ function CreateInvoiceModal({
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-start sm:items-center overflow-y-auto z-50 p-4 sm:p-6 md:p-10">
       <div className="bg-white rounded-xl w-full max-w-4xl p-6 max-h-[90vh] overflow-y-auto my-auto">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">Create Invoice</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold">Create Invoice</h2>
+            <span className="text-xs bg-blue-50 text-blue-700 font-bold px-2.5 py-1 rounded-full font-mono">
+              Series: {isGstInvoice ? "SPMJ/2026-2027/01" : "SPM/2026-2027/0001"}
+            </span>
+          </div>
 
           <button
             type="button"
@@ -329,11 +394,24 @@ function CreateInvoiceModal({
                       <div
                         key={customer._id}
                         onClick={() => {
+                          const custGst = customer.gstNumber?.trim();
+                          let autoMode = "INTRA_STATE";
+                          if (custGst && custGst.length >= 2) {
+                            const stateCode = custGst.substring(0, 2);
+                            if (/^\d{2}$/.test(stateCode) && stateCode !== "27") {
+                              autoMode = "INTER_STATE";
+                            }
+                          }
                           setFormData((prev) => ({
                             ...prev,
                             customerId: customer._id,
                             services: [],
                             customServices: [],
+                            gstNumber: customer.gstNumber || prev.gstNumber || "",
+                            taxMode: autoMode,
+                            ...(autoMode === "INTER_STATE"
+                              ? { igstPercentage: 18, cgstPercentage: 0, sgstPercentage: 0 }
+                              : { cgstPercentage: 9, sgstPercentage: 9, igstPercentage: 0 }),
                           }));
 
                           setCustomerSearch(customer.fullName);
@@ -475,31 +553,33 @@ function CreateInvoiceModal({
               />
             </div>
 
-            {isGstInvoice && <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block mb-2">HSN Code</label>
-
-                <input
-                  type="text"
-                  name="hsnCode"
-                  value={formData.hsnCode}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-3"
-                />
+            {isGstInvoice && (
+              <div className="md:col-span-2 bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-bold text-slate-800">
+                    Tax Codes (from Company Settings):
+                  </span>
+                  <div className="mt-1 flex items-center gap-3 text-xs text-slate-600 font-mono">
+                    <span>
+                      Default HSN:{" "}
+                      <strong>
+                        {companyDefaults.hsn || formData.hsnCode || "998531"}
+                      </strong>
+                    </span>
+                    <span>•</span>
+                    <span>
+                      Default SAC:{" "}
+                      <strong>
+                        {companyDefaults.sac || formData.sacCode || "9985"}
+                      </strong>
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  Applied automatically from Company Settings
+                </span>
               </div>
-
-              <div>
-                <label className="block mb-2">SAC Code</label>
-
-                <input
-                  type="text"
-                  name="sacCode"
-                  value={formData.sacCode}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-3"
-                />
-              </div>
-            </div>}
+            )}
           </div>
 
           <div>
@@ -529,43 +609,79 @@ function CreateInvoiceModal({
 
           {/* GST */}
 
-          {isGstInvoice && <div className="grid md:grid-cols-3 gap-4">
-            <div>
-              <label className="block mb-2">CGST %</label>
+          {isGstInvoice && (
+            <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <label className="font-semibold text-slate-800 text-sm">Tax Mode</label>
+                <div className="inline-flex rounded-lg border bg-white p-1" role="group" aria-label="Tax mode">
+                  <button
+                    type="button"
+                    onClick={() => handleTaxModeChange("INTRA_STATE")}
+                    className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                      formData.taxMode !== "INTER_STATE"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Intra-State (CGST + SGST)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTaxModeChange("INTER_STATE")}
+                    className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                      formData.taxMode === "INTER_STATE"
+                        ? "bg-blue-600 text-white"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Inter-State (IGST)
+                  </button>
+                </div>
+              </div>
 
-              <input
-                type="number"
-                name="cgstPercentage"
-                value={formData.cgstPercentage}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-              />
+              {formData.taxMode === "INTER_STATE" ? (
+                <div>
+                  <label className="block mb-1 text-xs font-medium text-slate-700">IGST %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    name="igstPercentage"
+                    value={formData.igstPercentage}
+                    onChange={handleChange}
+                    className="w-full max-w-xs border rounded-lg p-2.5 bg-white"
+                  />
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block mb-1 text-xs font-medium text-slate-700">CGST %</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      name="cgstPercentage"
+                      value={formData.cgstPercentage}
+                      onChange={handleChange}
+                      className="w-full border rounded-lg p-2.5 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-xs font-medium text-slate-700">SGST %</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      name="sgstPercentage"
+                      value={formData.sgstPercentage}
+                      onChange={handleChange}
+                      className="w-full border rounded-lg p-2.5 bg-white"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-
-            <div>
-              <label className="block mb-2">SGST %</label>
-
-              <input
-                type="number"
-                name="sgstPercentage"
-                value={formData.sgstPercentage}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-              />
-            </div>
-
-            <div>
-              <label className="block mb-2">IGST %</label>
-
-              <input
-                type="number"
-                name="igstPercentage"
-                value={formData.igstPercentage}
-                onChange={handleChange}
-                className="w-full border rounded-lg p-3"
-              />
-            </div>
-          </div>}
+          )}
 
           {/* Due Date */}
 
@@ -603,11 +719,16 @@ function CreateInvoiceModal({
             <div className="space-y-2">
               <div>Subtotal: ₹{subtotal}</div>
 
-              {isGstInvoice && <>
-                <div>CGST: ₹{cgst.toFixed(2)}</div>
-                <div>SGST: ₹{sgst.toFixed(2)}</div>
-                <div>IGST: ₹{igst.toFixed(2)}</div>
-              </>}
+              {isGstInvoice && (
+                formData.taxMode === "INTER_STATE" ? (
+                  <div>IGST ({formData.igstPercentage}%): ₹{igst.toFixed(2)}</div>
+                ) : (
+                  <>
+                    <div>CGST ({formData.cgstPercentage}%): ₹{cgst.toFixed(2)}</div>
+                    <div>SGST ({formData.sgstPercentage}%): ₹{sgst.toFixed(2)}</div>
+                  </>
+                )
+              )}
 
               <hr />
 

@@ -8,6 +8,7 @@ import {
 } from "../utils/serviceDateCalculator";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { formatDateOnly as formatDate } from "../utils/dateUtils";
 
 function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
   const dispatch = useDispatch();
@@ -25,6 +26,7 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
 
   const [formData, setFormData] = useState({
     customer: initialCustomer?._id || "",
+    customerName: initialCustomer?.fullName || "",
     employee: "",
     serviceName: "",
     desc: "",
@@ -51,6 +53,12 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
       [name]: value,
     };
 
+    if (name === "frequency" && value === "one-time") {
+      if (!updated.customerName && customerSearch) {
+        updated.customerName = customerSearch;
+      }
+    }
+
     if (name === "serviceDate" || name === "frequency") {
       if (updated.serviceDate && updated.frequency) {
         const { nextServiceDate, upcomingServiceDates } = calculateServiceDates(
@@ -68,8 +76,24 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    const payload = { ...formData };
+
+    if (payload.frequency === "one-time") {
+      if (!payload.customerName || !payload.customerName.trim()) {
+        toast.error("Customer name is required for One Time services");
+        return;
+      }
+      payload.customerName = payload.customerName.trim();
+      delete payload.customer;
+    } else {
+      if (!payload.customer) {
+        toast.error("Please select a registered customer for this service");
+        return;
+      }
+    }
+
     try {
-      await dispatch(createService(formData)).unwrap();
+      await dispatch(createService(payload)).unwrap();
       onCreated?.();
       handleClose();
       toast.success("Service created successfully.");
@@ -112,76 +136,99 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Customer Search */}
-          <div className="relative">
-            <label className="block mb-2 font-medium">Customer</label>
-            <input
-              type="text"
-              placeholder="Search Customer..."
-              value={customerSearch}
-              onChange={(e) => {
-                const value = e.target.value;
-                setCustomerSearch(value);
-                setShowCustomers(value.trim() !== "");
-              }}
-              className="w-full border rounded-xl p-3"
-              disabled={Boolean(initialCustomer)}
-              required
-            />
+          {/* Customer Selection or Standalone Customer Name based on Frequency */}
+          {formData.frequency === "one-time" ? (
+            <div>
+              <label className="block mb-2 font-medium">
+                Customer Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="customerName"
+                placeholder="Enter Customer Name"
+                value={formData.customerName}
+                onChange={handleChange}
+                className="w-full border rounded-xl p-3"
+                required
+              />
+            </div>
+          ) : (
+            <div className="relative">
+              <label className="block mb-2 font-medium">
+                Customer <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                placeholder="Search Customer..."
+                value={customerSearch}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setCustomerSearch(value);
+                  setShowCustomers(value.trim() !== "");
+                  if (!value.trim()) {
+                    setFormData((prev) => ({ ...prev, customer: "", customerName: "" }));
+                  }
+                }}
+                className="w-full border rounded-xl p-3"
+                disabled={Boolean(initialCustomer)}
+                required
+              />
 
-            {showCustomers && customerSearch.trim() !== "" && (
-              <div className="absolute z-50 w-full bg-white border rounded-xl mt-1 max-h-52 overflow-y-auto shadow-lg">
-                {customers?.filter((customer) => {
-                  const q = customerSearch.toLowerCase().trim();
-                  return (
-                    (customer.fullName?.toLowerCase() || "").includes(q) ||
-                    (customer.jobNo?.toLowerCase() || "").includes(q) ||
-                    (customer.phone?.toLowerCase() || "").includes(q) ||
-                    (customer.companyName?.toLowerCase() || "").includes(q)
-                  );
-                }).length > 0 ? (
-                  customers
-                    .filter((customer) => {
-                      const q = customerSearch.toLowerCase().trim();
-                      return (
-                        (customer.fullName?.toLowerCase() || "").includes(q) ||
-                        (customer.jobNo?.toLowerCase() || "").includes(q) ||
-                        (customer.phone?.toLowerCase() || "").includes(q) ||
-                        (customer.companyName?.toLowerCase() || "").includes(q)
-                      );
-                    })
-                    .map((customer) => (
-                      <div
-                        key={customer._id}
-                        onClick={() => {
-                          setFormData({
-                            ...formData,
-                            customer: customer._id,
-                            address: customer.address || "",
-                            contactPerson: customer.contactPerson || customer.fullName || "",
-                            contactNumber: customer.phone || "",
-                          });
+              {showCustomers && customerSearch.trim() !== "" && (
+                <div className="absolute z-50 w-full bg-white border rounded-xl mt-1 max-h-52 overflow-y-auto shadow-lg">
+                  {customers?.filter((customer) => {
+                    const q = customerSearch.toLowerCase().trim();
+                    return (
+                      (customer.fullName?.toLowerCase() || "").includes(q) ||
+                      (customer.jobNo?.toLowerCase() || "").includes(q) ||
+                      (customer.phone?.toLowerCase() || "").includes(q) ||
+                      (customer.companyName?.toLowerCase() || "").includes(q)
+                    );
+                  }).length > 0 ? (
+                    customers
+                      .filter((customer) => {
+                        const q = customerSearch.toLowerCase().trim();
+                        return (
+                          (customer.fullName?.toLowerCase() || "").includes(q) ||
+                          (customer.jobNo?.toLowerCase() || "").includes(q) ||
+                          (customer.phone?.toLowerCase() || "").includes(q) ||
+                          (customer.companyName?.toLowerCase() || "").includes(q)
+                        );
+                      })
+                      .map((customer) => (
+                        <div
+                          key={customer._id}
+                          onClick={() => {
+                            setFormData({
+                              ...formData,
+                              customer: customer._id,
+                              customerName: customer.fullName || "",
+                              address: customer.address || "",
+                              contactPerson: customer.contactPerson || customer.fullName || "",
+                              contactNumber: customer.phone || "",
+                            });
 
-                          setCustomerSearch(customer.fullName);
-                          setShowCustomers(false);
-                        }}
-                        className="p-3 hover:bg-slate-100 cursor-pointer"
-                      >
-                        <div className="font-medium flex justify-between">
-                          <span>{customer.fullName}</span>
-                          {customer.jobNo && <span className="text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold text-slate-700">Job: {customer.jobNo}</span>}
+                            setCustomerSearch(customer.fullName);
+                            setShowCustomers(false);
+                          }}
+                          className="p-3 hover:bg-slate-100 cursor-pointer"
+                        >
+                          <div className="font-medium flex justify-between">
+                            <span>{customer.fullName}</span>
+                            {customer.jobNo && <span className="text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold text-slate-700">Job: {customer.jobNo}</span>}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {customer.phone}
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-500">
-                          {customer.phone}
-                        </div>
-                      </div>
-                    ))
-                ) : (
-                  <div className="p-3 text-gray-500">No customer found</div>
-                )}
-              </div>
-            )}
-          </div>
+                      ))
+                  ) : (
+                    <div className="p-3 text-gray-500">No customer found</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Employee Search */}
           <div className="relative">
@@ -349,11 +396,7 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
                         key={i}
                         className="bg-white border border-slate-300 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-700 shadow-xs"
                       >
-                        {new Date(d).toLocaleDateString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
+                        {formatDate(d)}
                       </span>
                     ))}
                   </div>

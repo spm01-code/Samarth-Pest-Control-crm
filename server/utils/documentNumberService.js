@@ -9,27 +9,34 @@ export const DOCUMENT_CONFIG = Object.freeze({
   INVOICE: {
     type: "INVOICE",
     label: "Invoice",
-    prefix: "SPM/",
+    prefix: "SPMJ/",
+    padding: 2,
+    nonGstPrefix: "SPM/",
+    nonGstPadding: 4,
   },
   PC_QUOTATION: {
     type: "PC_QUOTATION",
     label: "PC Quotation",
     prefix: "SPM/PC/",
+    padding: 4,
   },
   ATT_QUOTATION: {
     type: "ATT_QUOTATION",
     label: "ATT Quotation",
     prefix: "SPM/ATT/",
+    padding: 4,
   },
   CONTRACT_RENEWAL: {
     type: "CONTRACT_RENEWAL",
     label: "Contract Renewal",
     prefix: "SPM/CR/",
+    padding: 4,
   },
   ONE_TIME_JOB: {
     type: "ONE_TIME_JOB",
     label: "One Time Job",
     prefix: "Job No/",
+    padding: 4,
   },
 });
 
@@ -184,7 +191,21 @@ export const generateDocumentNumber = async (documentType, options = {}) => {
     findOptions
   );
 
-  const documentNumber = formatDocumentNumber(config.prefix, docYear, counter.seq);
+  let prefix = config.prefix;
+  let padding = config.padding || 4;
+
+  if (documentType === "INVOICE") {
+    const isNonGst = options.invoiceType === "NON_GST" || options.isNonGst === true;
+    if (isNonGst) {
+      prefix = config.nonGstPrefix || "SPM/";
+      padding = config.nonGstPadding || 4;
+    } else {
+      prefix = config.prefix || "SPMJ/";
+      padding = config.padding || 2;
+    }
+  }
+
+  const documentNumber = formatDocumentNumber(prefix, docYear, counter.seq, padding);
 
   return {
     documentNumber,
@@ -202,19 +223,43 @@ export const generateDocumentNumber = async (documentType, options = {}) => {
  * @param {string} documentType
  * @param {string|number} [year]
  * @param {number} [sampleSeq=1]
+ * @param {object} [options={}]
  */
-export const getDocumentNumberPreview = (documentType, year, sampleSeq = 1) => {
+export const getDocumentNumberPreview = (documentType, year, sampleSeq = 1, options = {}) => {
+  if (typeof year === "object" && year !== null) {
+    options = year;
+    year = undefined;
+    sampleSeq = 1;
+  } else if (typeof sampleSeq === "object" && sampleSeq !== null) {
+    options = sampleSeq;
+    sampleSeq = 1;
+  }
   const config = DOCUMENT_CONFIG[documentType];
   if (!config) {
     throw new Error(`Unknown document type "${documentType}"`);
   }
   const parsed = parseYearInput(year || new Date().getFullYear());
   const docYear = getYearForDocType(documentType, parsed);
+
+  let prefix = config.prefix;
+  let padding = config.padding || 4;
+
+  if (documentType === "INVOICE") {
+    const isNonGst = options.invoiceType === "NON_GST" || options.isNonGst === true;
+    if (isNonGst) {
+      prefix = config.nonGstPrefix || "SPM/";
+      padding = config.nonGstPadding || 4;
+    } else {
+      prefix = config.prefix || "SPMJ/";
+      padding = config.padding || 2;
+    }
+  }
+
   return {
     documentType,
     label: config.label,
-    prefix: config.prefix,
-    previewNumber: formatDocumentNumber(config.prefix, docYear, sampleSeq),
+    prefix,
+    previewNumber: formatDocumentNumber(prefix, docYear, sampleSeq, padding),
     year: docYear,
     baseYear: parsed.baseYear,
   };
@@ -236,12 +281,13 @@ export const getAllDocumentPreviews = async (year) => {
 
   for (const [key, config] of Object.entries(DOCUMENT_CONFIG)) {
     const docYear = getYearForDocType(key, parsed);
+    const padding = config.padding || 4;
     previews[key] = {
       type: key,
       label: config.label,
       prefix: config.prefix,
-      format: `${config.prefix}${docYear}/0001`,
-      sample: formatDocumentNumber(config.prefix, docYear, 1),
+      format: `${config.prefix}${docYear}/${"0".repeat(padding - 1)}1`,
+      sample: formatDocumentNumber(config.prefix, docYear, 1, padding),
     };
   }
 
@@ -279,12 +325,12 @@ export const syncExistingDocumentSequences = async (models = {}) => {
     const invoices = await Invoice.find().select("invoiceNumber");
     for (const inv of invoices) {
       if (!inv.invoiceNumber) continue;
-      // Match formats: SPM/YYYY-YYYY/NNNN, SPM/INV/YYYY-YYYY/NNNN, SPM/YYYY/NNNN, SPM-YYYY-NNNN, INV-YYYY-NNNN, INV-NNNN
-      const m0 = inv.invoiceNumber.match(/SPM\/(?:INV\/)?(\d{4})[-/](?:\d{2,4})[-\/](\d+)/i);
+      // Match formats: SPMJ/YYYY-YYYY/NN, SPM/YYYY-YYYY/NNNN, SPM/INV/YYYY-YYYY/NNNN, SPM/YYYY/NNNN, SPM-YYYY-NNNN, INV-YYYY-NNNN, INV-NNNN
+      const m0 = inv.invoiceNumber.match(/(?:SPMJ|SPM)\/(?:INV\/)?(\d{4})[-/](?:\d{2,4})[-\/](\d+)/i);
       if (m0) {
         await ensureMaxSeq("INVOICE", Number(m0[1]), Number(m0[2]));
       } else {
-        const m1 = inv.invoiceNumber.match(/(?:SPM\/(?:INV\/)?|SPM-|INV-)(\d{4})[-\/](\d+)/i);
+        const m1 = inv.invoiceNumber.match(/(?:(?:SPMJ|SPM)\/(?:INV\/)?|SPM-|INV-)(\d{4})[-\/](\d+)/i);
         if (m1) {
           await ensureMaxSeq("INVOICE", Number(m1[1]), Number(m1[2]));
         } else {

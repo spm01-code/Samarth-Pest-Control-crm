@@ -63,6 +63,19 @@ const companySettingSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Tax & invoice defaults
+    defaultHsnCode: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    defaultSacCode: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     // Optional file paths for later
     logoPath: {
       type: String,

@@ -18,6 +18,7 @@ import { fetchInvoiceByServiceIdAPI } from "../API/invoiceAPI";
 import { HiOutlineDocumentText } from "react-icons/hi2";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { formatDateOnly as formatDate, formatTimestamp } from "../utils/dateUtils";
 
 function ServiceDetails() {
   const { id } = useParams();
@@ -163,10 +164,17 @@ function ServiceDetails() {
       <div className="bg-white rounded-3xl shadow-sm p-8 mb-6">
         <div className="flex flex-col md:flex-row justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">{service.serviceName}</h1>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-3xl font-bold">{service.serviceName}</h1>
+              {isOneTimeJobService(service) && (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold font-mono bg-blue-50 text-blue-700 border border-blue-200">
+                  Job No: {service.jobNo || service.customer?.jobNo || "-"}
+                </span>
+              )}
+            </div>
 
             <p className="text-gray-500 mt-2">
-              Created on {new Date(service.createdAt).toLocaleDateString()}
+              Created on {formatTimestamp(service.createdAt)}
             </p>
           </div>
 
@@ -201,19 +209,27 @@ function ServiceDetails() {
           <p className="text-gray-500 text-sm">Service Date</p>
 
           <h3 className="text-lg font-semibold mt-2">
-            {new Date(service.serviceDate).toLocaleDateString()}
+            {formatDate(service.serviceDate)}
           </h3>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <p className="text-gray-500 text-sm">Next Service</p>
+        {isOneTimeJobService(service) ? (
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-blue-100">
+            <p className="text-gray-500 text-sm">Job No.</p>
 
-          <h3 className="text-lg font-semibold mt-2">
-            {service.nextServiceDate
-              ? new Date(service.nextServiceDate).toLocaleDateString()
-              : "N/A"}
-          </h3>
-        </div>
+            <h3 className="text-xl font-bold mt-2 font-mono text-blue-900">
+              {service.jobNo || service.customer?.jobNo || "-"}
+            </h3>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <p className="text-gray-500 text-sm">Next Service</p>
+
+            <h3 className="text-lg font-semibold mt-2">
+              {formatDate(service.nextServiceDate, "N/A")}
+            </h3>
+          </div>
+        )}
       </div>
 
       {/* Customer + Employee */}
@@ -225,16 +241,28 @@ function ServiceDetails() {
           <h2 className="text-xl font-semibold mb-5">Customer Information</h2>
 
           <div className="space-y-3">
+            {isOneTimeJobService(service) && (
+              <div>
+                <p className="text-sm text-gray-500">Job No.</p>
+                <p className="font-mono font-semibold text-blue-900">
+                  {service.jobNo || service.customer?.jobNo || "-"}
+                </p>
+              </div>
+            )}
             <div>
               <p className="text-sm text-gray-500">Name</p>
 
-              <p className="font-medium">{service.customer?.fullName}</p>
+              <p className="font-medium">
+                {service.customerName || service.customer?.fullName || "Not Available"}
+              </p>
             </div>
 
             <div>
               <p className="text-sm text-gray-500">Phone</p>
 
-              <p className="font-medium">{service.customer?.phone}</p>
+              <p className="font-medium">
+                {service.contactNumber || service.customer?.phone || "Not Available"}
+              </p>
             </div>
 
             <div>
@@ -336,7 +364,7 @@ function ServiceDetails() {
                   }`}
                 >
                   <p className="text-xs text-slate-500">Service {index + 1}</p>
-                  <p className="mt-1 text-sm">{dateObj.toLocaleDateString("en-IN")}</p>
+                  <p className="mt-1 text-sm">{formatDate(dateObj)}</p>
                   {isNext && (
                     <span className="inline-block mt-1 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded-full">
                       Next Due

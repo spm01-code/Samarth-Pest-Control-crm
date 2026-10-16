@@ -29,6 +29,7 @@ import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
+import { formatDateOnly as formatDate } from "../utils/dateUtils";
 
 function CustomerProfile() {
   const { id } = useParams();
@@ -105,12 +106,6 @@ function CustomerProfile() {
       (total, service) => total + Number(service.cost || 0),
       0,
     );
-  };
-
-  const formatDate = (date) => {
-    if (!date) return "-";
-
-    return new Date(date).toLocaleDateString();
   };
 
   const handleDelete = async () => {

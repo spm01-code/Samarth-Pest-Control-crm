@@ -12,6 +12,7 @@ import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
+import { formatDateOnly as formatDate } from "../utils/dateUtils";
 
 function InvoicePage() {
   const dispatch = useDispatch();
@@ -91,12 +92,6 @@ function InvoicePage() {
     return invoiceList.filter((invoice) => {
       return invoice.invoiceType === type;
     }).length;
-  };
-
-  const formatDate = (date) => {
-    if (!date) return "-";
-
-    return new Date(date).toLocaleDateString();
   };
 
   const getPaymentStatusClass = (status) => {

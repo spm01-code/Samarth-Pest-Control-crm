@@ -5,6 +5,7 @@ import { createRenewal, updateRenewal, fetchRenewals } from "../slices/renewalSl
 import { fetchCompanySettingsAPI } from "../API/companySettingAPI";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { formatDateForInput } from "../utils/dateUtils";
 
 const today = () => new Date().toLocaleDateString("en-CA");
 
@@ -81,7 +82,7 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
       setForm({
         renewalNumber: initialRenewal.renewalNumber || "",
         renewalDate: initialRenewal.renewalDate
-          ? new Date(initialRenewal.renewalDate).toLocaleDateString("en-CA")
+          ? formatDateForInput(initialRenewal.renewalDate)
           : today(),
         customer:
           initialRenewal.customer?._id ||

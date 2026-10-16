@@ -212,9 +212,18 @@ export const createInvoice = async (req, res) => {
     }
 
     const isGstInvoice = invoiceType === "GST";
-    const cgstRate = isGstInvoice ? Number(cgstPercentage || 0) : 0;
-    const sgstRate = isGstInvoice ? Number(sgstPercentage || 0) : 0;
-    const igstRate = isGstInvoice ? Number(igstPercentage || 0) : 0;
+    const rawCgstRate = isGstInvoice ? Number(cgstPercentage || 0) : 0;
+    const rawSgstRate = isGstInvoice ? Number(sgstPercentage || 0) : 0;
+    const rawIgstRate = isGstInvoice ? Number(igstPercentage || 0) : 0;
+
+    // Mutually exclusive tax calculation:
+    // If IGST rate is specified (> 0), CGST and SGST must be 0.
+    // If CGST or SGST is specified (> 0), IGST must be 0.
+    const isInterState = rawIgstRate > 0;
+    const cgstRate = isInterState ? 0 : rawCgstRate;
+    const sgstRate = isInterState ? 0 : rawSgstRate;
+    const igstRate = isInterState ? rawIgstRate : 0;
+
     const cgstAmount = (subtotal * cgstRate) / 100;
     const sgstAmount = (subtotal * sgstRate) / 100;
     const igstAmount = (subtotal * igstRate) / 100;
@@ -223,72 +232,118 @@ export const createInvoice = async (req, res) => {
 
     const totalAmount = subtotal + totalTax;
 
-    const { documentNumber: invoiceNumber } = await generateDocumentNumber(
-      "INVOICE"
-    );
+    // Resolve default HSN / SAC codes from Company Settings for GST invoices
+    let resolvedHsnCode = "";
+    let resolvedSacCode = "";
+    if (isGstInvoice) {
+      if (hsnCode && String(hsnCode).trim()) {
+        resolvedHsnCode = String(hsnCode).trim();
+      }
+      if (sacCode && String(sacCode).trim()) {
+        resolvedSacCode = String(sacCode).trim();
+      }
+      if (!resolvedHsnCode || !resolvedSacCode) {
+        const companySettings = await CompanySetting.findOne();
+        if (companySettings) {
+          if (!resolvedHsnCode && companySettings.defaultHsnCode) {
+            resolvedHsnCode = companySettings.defaultHsnCode.trim();
+          }
+          if (!resolvedSacCode && companySettings.defaultSacCode) {
+            resolvedSacCode = companySettings.defaultSacCode.trim();
+          }
+        }
+      }
+    }
 
-    const invoice = await Invoice.create({
-      invoiceNumber,
+    let invoice;
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const { documentNumber: invoiceNumber } = await generateDocumentNumber(
+        "INVOICE",
+        { invoiceType }
+      );
 
-      invoiceDate: new Date(),
+      try {
+        invoice = await Invoice.create({
+          invoiceNumber,
 
-      invoiceType,
+          invoiceDate: new Date(),
 
-      dueDate,
+          invoiceType,
 
-      billingPeriod,
-      contractPeriod,
+          dueDate,
 
-      customer: customer._id,
+          billingPeriod,
+          contractPeriod,
 
-      services: serviceDocs.map((service) => service._id),
+          customer: customer._id,
 
-      customServices: validCustomServices.map((cs) => ({
-        serviceName: cs.serviceName,
-        amount: Number(cs.amount),
-        desc: cs.desc || "",
-        serviceDate: cs.serviceDate || new Date(),
-      })),
+          services: serviceDocs.map((service) => service._id),
 
-      workOrderNumber,
-      workOrderDate,
+          customServices: validCustomServices.map((cs) => ({
+            serviceName: cs.serviceName,
+            amount: Number(cs.amount),
+            desc: cs.desc || "",
+            serviceDate: cs.serviceDate || new Date(),
+          })),
 
-      gstNumber: isGstInvoice ? gstNumber : "",
+          workOrderNumber,
+          workOrderDate,
 
-      particulars,
+          gstNumber: isGstInvoice ? gstNumber : "",
 
-      premisesTreated,
-      treatmentType,
+          particulars,
 
-      hsnCode: isGstInvoice ? hsnCode : "",
-      sacCode: isGstInvoice ? sacCode : "",
+          premisesTreated,
+          treatmentType,
 
-      tax: {
-        cgstPercentage: cgstRate,
-        cgstAmount,
+          hsnCode: resolvedHsnCode,
+          sacCode: resolvedSacCode,
 
-        sgstPercentage: sgstRate,
-        sgstAmount,
+          tax: {
+            cgstPercentage: cgstRate,
+            cgstAmount,
 
-        igstPercentage: igstRate,
-        igstAmount,
-      },
+            sgstPercentage: sgstRate,
+            sgstAmount,
 
-      subtotal,
+            igstPercentage: igstRate,
+            igstAmount,
+          },
 
-      totalTax,
+          subtotal,
 
-      totalAmount,
+          totalTax,
 
-      amountInWords:
-        amountInWords?.trim() || `Rupees ${numberToWords(totalAmount)} Only`,
+          totalAmount,
 
-      balanceAmount: totalAmount,
+          amountInWords:
+            amountInWords?.trim() || `Rupees ${numberToWords(totalAmount)} Only`,
 
-      notes,
+          balanceAmount: totalAmount,
 
-      generatedBy: req.admin._id,
-    });
+          notes,
+
+          generatedBy: req.admin._id,
+        });
+
+        break;
+      } catch (createErr) {
+        const isDuplicateInvoiceNumber =
+          createErr.code === 11000 &&
+          (createErr.keyPattern?.invoiceNumber ||
+            (createErr.message && createErr.message.includes("invoiceNumber")));
+
+        if (isDuplicateInvoiceNumber && attempt < maxRetries) {
+          console.warn(
+            `Invoice number collision on "${invoiceNumber}", retrying attempt ${attempt + 1}/${maxRetries}...`
+          );
+          continue;
+        }
+
+        throw createErr;
+      }
+    }
 
     const populatedInvoice = await invoice.populate([
       {
@@ -390,6 +445,30 @@ export const updateInvoice = async (req, res) => {
   try {
     const updateData = { ...req.body };
 
+    // Validate invoice number uniqueness if updated
+    if (updateData.invoiceNumber !== undefined) {
+      const trimmedNumber = String(updateData.invoiceNumber).trim();
+      if (!trimmedNumber) {
+        return res.status(400).json({
+          success: false,
+          message: "Invoice number cannot be empty.",
+        });
+      }
+      updateData.invoiceNumber = trimmedNumber;
+
+      const duplicateInvoice = await Invoice.findOne({
+        invoiceNumber: trimmedNumber,
+        _id: { $ne: req.params.id },
+      });
+      if (duplicateInvoice) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "This invoice number already exists. Please enter a different invoice number.",
+        });
+      }
+    }
+
     // Optional enum fields must be omitted when the form has no selection.
     // Mongoose validates an empty string as an enum value, which causes edits
     // to fail for invoices that do not yet have a payment method.
@@ -433,9 +512,18 @@ export const updateInvoice = async (req, res) => {
           );
           return Number.isFinite(value) && value >= 0 ? value : 0;
         };
-        const cgstPercentage = rate("cgstPercentage");
-        const sgstPercentage = rate("sgstPercentage");
-        const igstPercentage = rate("igstPercentage");
+        let cgstPercentage = rate("cgstPercentage");
+        let sgstPercentage = rate("sgstPercentage");
+        let igstPercentage = rate("igstPercentage");
+
+        // Mutually exclusive: if IGST > 0, CGST/SGST = 0; if CGST/SGST > 0, IGST = 0
+        if (igstPercentage > 0) {
+          cgstPercentage = 0;
+          sgstPercentage = 0;
+        } else if (cgstPercentage > 0 || sgstPercentage > 0) {
+          igstPercentage = 0;
+        }
+
         const cgstAmount = (existingInvoice.subtotal * cgstPercentage) / 100;
         const sgstAmount = (existingInvoice.subtotal * sgstPercentage) / 100;
         const igstAmount = (existingInvoice.subtotal * igstPercentage) / 100;
@@ -481,6 +569,17 @@ export const updateInvoice = async (req, res) => {
       invoice,
     });
   } catch (error) {
+    if (
+      error.code === 11000 &&
+      (error.keyPattern?.invoiceNumber ||
+        (error.message && error.message.includes("invoiceNumber")))
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This invoice number already exists. Please enter a different invoice number.",
+      });
+    }
     res.status(500).json({
       success: false,
       message: error.message,

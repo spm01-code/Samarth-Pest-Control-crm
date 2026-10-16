@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { updateService, fetchService } from "../slices/serviceSlice";
 import { fetchEmployees } from "../slices/employeeSlice";
+import { fetchCustomers } from "../slices/customerSlice";
 import {
   calculateServiceDates,
   formatDateForInput,
@@ -11,6 +12,7 @@ import {
 import { useBodyScrollLock } from "../utils/useBodyScrollLock";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { formatDateOnly as formatDate } from "../utils/dateUtils";
 
 function EditServiceModal({ service, onClose }) {
   const dispatch = useDispatch();
@@ -20,6 +22,28 @@ function EditServiceModal({ service, onClose }) {
   useBodyScrollLock(true);
 
   const { employees } = useSelector((state) => state.employee);
+  const { customers } = useSelector((state) => state.customer);
+
+  const getInitialCustomerId = () => {
+    if (!service?.customer) return "";
+    if (typeof service.customer === "object") return service.customer._id || "";
+    return String(service.customer);
+  };
+
+  const getInitialCustomerName = () => {
+    if (service?.customerName) return service.customerName;
+    if (service?.customer && typeof service.customer === "object") {
+      return service.customer.fullName || service.customer.companyName || "";
+    }
+    return "";
+  };
+
+  const getInitialCustomerSearch = () => {
+    if (service?.customer && typeof service.customer === "object") {
+      return service.customer.fullName || service.customer.companyName || "";
+    }
+    return "";
+  };
 
   const getInitialEmployeeId = () => {
     if (!service?.employee) return "";
@@ -44,6 +68,8 @@ function EditServiceModal({ service, onClose }) {
   };
 
   const [formData, setFormData] = useState({
+    customer: getInitialCustomerId(),
+    customerName: getInitialCustomerName(),
     employee: getInitialEmployeeId(),
     jobNo: service.jobNo || service.jobNumber || "",
     serviceName: service.serviceName || "",
@@ -68,6 +94,10 @@ function EditServiceModal({ service, onClose }) {
       : [],
   });
 
+  const [customerSearch, setCustomerSearch] = useState(getInitialCustomerSearch());
+  const [showCustomers, setShowCustomers] = useState(false);
+  const customerDropdownRef = useRef(null);
+
   const [employeeSearch, setEmployeeSearch] = useState(getInitialEmployeeName());
   const [showEmployees, setShowEmployees] = useState(false);
   const employeeDropdownRef = useRef(null);
@@ -79,15 +109,10 @@ function EditServiceModal({ service, onClose }) {
   }, [dispatch, employees]);
 
   useEffect(() => {
-    if (formData.employee && employees?.length > 0) {
-      const found = employees.find(
-        (emp) => String(emp._id) === String(formData.employee)
-      );
-      if (found && (!employeeSearch || employeeSearch !== found.fullName)) {
-        setEmployeeSearch(found.fullName);
-      }
+    if (!customers || customers.length === 0) {
+      dispatch(fetchCustomers());
     }
-  }, [formData.employee, employees]);
+  }, [dispatch, customers]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -96,6 +121,12 @@ function EditServiceModal({ service, onClose }) {
         !employeeDropdownRef.current.contains(event.target)
       ) {
         setShowEmployees(false);
+      }
+      if (
+        customerDropdownRef.current &&
+        !customerDropdownRef.current.contains(event.target)
+      ) {
+        setShowCustomers(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -110,6 +141,12 @@ function EditServiceModal({ service, onClose }) {
       ...formData,
       [name]: value,
     };
+
+    if (name === "frequency" && value === "one-time") {
+      if (!updated.customerName && customerSearch) {
+        updated.customerName = customerSearch;
+      }
+    }
 
     if (name === "serviceDate" || name === "frequency") {
       if (updated.serviceDate && updated.frequency) {
@@ -128,11 +165,29 @@ function EditServiceModal({ service, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    const payload = { ...formData };
+
+    if (payload.frequency === "one-time") {
+      if (!payload.customerName || !payload.customerName.trim()) {
+        toast.error("Customer name is required for One Time services");
+        return;
+      }
+      payload.customerName = payload.customerName.trim();
+      if (!payload.customer) {
+        payload.customer = null;
+      }
+    } else {
+      if (!payload.customer) {
+        toast.error("Please select a registered customer for this service");
+        return;
+      }
+    }
+
     try {
       await dispatch(
         updateService({
           id: service._id,
-          serviceData: formData,
+          serviceData: payload,
         })
       ).unwrap();
 
@@ -194,6 +249,144 @@ function EditServiceModal({ service, onClose }) {
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
           {/* Scrollable Body */}
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            {/* Customer Section */}
+            {formData.frequency === "one-time" ? (
+              <div>
+                <label className="block mb-1 text-sm font-medium text-gray-700">
+                  Customer Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="customerName"
+                  value={formData.customerName}
+                  onChange={handleChange}
+                  placeholder="Enter Customer Name"
+                  className="w-full border rounded-xl p-3 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  required
+                />
+              </div>
+            ) : (
+              <div className="relative" ref={customerDropdownRef}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Customer <span className="text-red-500">*</span>
+                  </label>
+                  {formData.customer ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData((prev) => ({ ...prev, customer: "" }));
+                        setCustomerSearch("");
+                      }}
+                      className="text-xs text-red-600 hover:text-red-800 underline cursor-pointer"
+                    >
+                      Change Customer
+                    </button>
+                  ) : null}
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Search and select customer..."
+                  value={
+                    customerSearch ||
+                    (formData.customer &&
+                      customers?.find(
+                        (c) => String(c._id) === String(formData.customer)
+                      )?.fullName) ||
+                    ""
+                  }
+                  onFocus={() => setShowCustomers(true)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCustomerSearch(value);
+                    setShowCustomers(true);
+                    if (!value.trim()) {
+                      setFormData((prev) => ({ ...prev, customer: "" }));
+                    }
+                  }}
+                  className="w-full border rounded-xl p-3 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  required
+                />
+
+                {showCustomers && (
+                  <div className="absolute z-40 w-full bg-white border rounded-xl mt-1 max-h-52 overflow-y-auto shadow-xl">
+                    {customers && customers.length > 0 ? (
+                      customers.filter((cust) => {
+                        const q = customerSearch.toLowerCase().trim();
+                        return (
+                          (cust.fullName?.toLowerCase() || "").includes(q) ||
+                          (cust.jobNo?.toLowerCase() || "").includes(q) ||
+                          (cust.phone?.toLowerCase() || "").includes(q) ||
+                          (cust.companyName?.toLowerCase() || "").includes(q)
+                        );
+                      }).length > 0 ? (
+                        customers
+                          .filter((cust) => {
+                            const q = customerSearch.toLowerCase().trim();
+                            return (
+                              (cust.fullName?.toLowerCase() || "").includes(q) ||
+                              (cust.jobNo?.toLowerCase() || "").includes(q) ||
+                              (cust.phone?.toLowerCase() || "").includes(q) ||
+                              (cust.companyName?.toLowerCase() || "").includes(q)
+                            );
+                          })
+                          .map((cust) => {
+                            const isSelected =
+                              String(formData.customer) === String(cust._id);
+                            return (
+                              <div
+                                key={cust._id}
+                                onClick={() => {
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    customer: cust._id,
+                                    customerName: cust.fullName || "",
+                                    address: prev.address || cust.address || "",
+                                    contactPerson: prev.contactPerson || cust.contactPerson || cust.fullName || "",
+                                    contactNumber: prev.contactNumber || cust.phone || "",
+                                  }));
+                                  setCustomerSearch(cust.fullName);
+                                  setShowCustomers(false);
+                                }}
+                                className={`p-3 hover:bg-slate-100 cursor-pointer flex items-center justify-between transition ${
+                                  isSelected
+                                    ? "bg-blue-50 text-blue-800 font-medium"
+                                    : ""
+                                }`}
+                              >
+                                <div>
+                                  <div className="font-medium text-slate-800">
+                                    {cust.fullName}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {cust.phone ? `Phone: ${cust.phone}` : ""}
+                                    {cust.jobNo ? ` • Job: ${cust.jobNo}` : ""}
+                                  </div>
+                                </div>
+                                {isSelected && (
+                                  <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">
+                                    Selected
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })
+                      ) : (
+                        <div className="p-3 text-gray-500 text-sm">
+                          No matching customer found
+                        </div>
+                      )
+                    ) : (
+                      <div className="p-3 text-gray-500 text-sm">
+                        No customers available
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Assign Employee */}
             <div className="relative" ref={employeeDropdownRef}>
               <div className="flex items-center justify-between mb-1">
@@ -217,7 +410,14 @@ function EditServiceModal({ service, onClose }) {
               <input
                 type="text"
                 placeholder="Search and assign employee..."
-                value={employeeSearch}
+                value={
+                  employeeSearch ||
+                  (formData.employee &&
+                    employees?.find(
+                      (emp) => String(emp._id) === String(formData.employee)
+                    )?.fullName) ||
+                  ""
+                }
                 onFocus={() => setShowEmployees(true)}
                 onChange={(e) => {
                   const value = e.target.value;
@@ -428,11 +628,7 @@ function EditServiceModal({ service, onClose }) {
                           key={i}
                           className="bg-white border border-slate-300 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-700 shadow-xs"
                         >
-                          {new Date(d).toLocaleDateString("en-IN", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })}
+                          {formatDate(d)}
                         </span>
                       ))}
                     </div>

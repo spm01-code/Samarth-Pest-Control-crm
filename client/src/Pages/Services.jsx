@@ -10,9 +10,11 @@ import {
   isMultiDateFrequency,
   calculateServiceDates,
   normalizeFrequency,
+  isOneTimeJobService,
 } from "../utils/serviceDateCalculator";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
+import { formatDateOnly as formatDate } from "../utils/dateUtils";
 
 function Services() {
   const dispatch = useDispatch();
@@ -42,13 +44,20 @@ function Services() {
   }).length;
 
   const filteredServices = serviceList.filter((service) => {
+    const searchLower = search.toLowerCase();
+    const jobIdentifier = (service.jobNo || service.customer?.jobNo || "").toLowerCase();
+    const customerDisplayName = (service.customerName || service.customer?.fullName || "").toLowerCase();
+
     const matchesSearch =
-      (service.serviceName?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (service.frequency?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (service.employee?.fullName?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (service.operatorName?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (service.customer?.fullName?.toLowerCase() || "").includes(search.toLowerCase()) ||
-      (service.jobNo?.toLowerCase() || "").includes(search.toLowerCase());
+      (service.serviceName?.toLowerCase() || "").includes(searchLower) ||
+      (service.frequency?.toLowerCase() || "").includes(searchLower) ||
+      (service.employee?.fullName?.toLowerCase() || "").includes(searchLower) ||
+      (service.operatorName?.toLowerCase() || "").includes(searchLower) ||
+      customerDisplayName.includes(searchLower) ||
+      (service.customer?.fullName?.toLowerCase() || "").includes(searchLower) ||
+      (service.jobNo?.toLowerCase() || "").includes(searchLower) ||
+      (service.customer?.jobNo?.toLowerCase() || "").includes(searchLower) ||
+      jobIdentifier.includes(searchLower);
 
     const matchesStatus =
       statusFilter === "all" ? true : service.status === statusFilter;
@@ -83,10 +92,12 @@ function Services() {
     }
   };
 
-  const formatDate = (date) => {
-    if (!date) return "-";
-    return new Date(date).toLocaleDateString();
-  };
+  const customerHeader =
+    frequencyFilter === "one-time"
+      ? "Job No. / Customer"
+      : frequencyFilter === "all"
+      ? "Customer / Job No."
+      : "Customer";
 
   return (
     <div className="min-h-screen bg-[#f5f7fb] p-4 sm:p-6 lg:p-8">
@@ -198,30 +209,63 @@ function Services() {
 
       {/* Services List Table */}
       <DataTable
-        headers={[
-          { key: "customer", label: "Customer", width: "18%" },
-          { key: "service", label: "Service Name", width: "18%" },
-          { key: "freq", label: "Frequency", width: "12%" },
-          { key: "assigned", label: "Assigned To", width: "15%" },
-          { key: "date", label: "Service Date", width: "11%" },
-          { key: "nextDate", label: "Next Date", width: "14%" },
-          { key: "amount", label: "Amount", width: "10%" },
-          { key: "status", label: "Status", width: "10%" },
-        ]}
-        loading={loading}
-        error={error}
-        emptyMessage="No Services Found"
-        minWidth="min-w-[1100px]"
-      >
-        {filteredServices.map((service) => (
-          <tr
-            key={service._id}
-            className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer transition"
-            onClick={() => navigate(`/services/${service._id}`)}
+            headers={[
+              { key: "customerOrJob", label: customerHeader, width: "18%" },
+              { key: "service", label: "Service Name", width: "18%" },
+              { key: "freq", label: "Frequency", width: "12%" },
+              { key: "assigned", label: "Assigned To", width: "15%" },
+              { key: "date", label: "Service Date", width: "11%" },
+              { key: "nextDate", label: "Next Date", width: "14%" },
+              { key: "amount", label: "Amount", width: "10%" },
+              { key: "status", label: "Status", width: "10%" },
+            ]}
+            loading={loading}
+            error={error}
+            emptyMessage="No Services Found"
+            minWidth="min-w-[1100px]"
           >
-            <td className="p-3.5 font-medium text-slate-900">
-              <TooltipCell value={service.customer?.fullName} maxWidth="max-w-[180px]" />
-            </td>
+            {filteredServices.map((service) => (
+              <tr
+                key={service._id}
+                className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer transition"
+                onClick={() => navigate(`/services/${service._id}`)}
+              >
+                <td className="p-3.5 font-medium text-slate-900">
+                  {frequencyFilter === "one-time" ? (
+                    <div className="flex flex-col items-start gap-0.5">
+                      <span className="font-mono text-sm font-semibold text-blue-900 bg-blue-50 border border-blue-200/80 px-2.5 py-1 rounded-md inline-block">
+                        {service.jobNo || service.customer?.jobNo || "-"}
+                      </span>
+                      {(service.customerName || service.customer?.fullName) && (
+                        <span
+                          className="text-xs text-slate-500 truncate max-w-[180px]"
+                          title={service.customerName || service.customer?.fullName}
+                        >
+                          {service.customerName || service.customer?.fullName}
+                        </span>
+                      )}
+                    </div>
+                  ) : isOneTimeJobService(service) ? (
+                    <div className="flex flex-col items-start gap-0.5">
+                      <span className="font-mono text-xs font-semibold text-blue-900 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded">
+                        {service.jobNo || service.customer?.jobNo || "-"}
+                      </span>
+                      {(service.customerName || service.customer?.fullName) && (
+                        <span
+                          className="text-xs text-slate-500 truncate max-w-[180px]"
+                          title={service.customerName || service.customer?.fullName}
+                        >
+                          {service.customerName || service.customer?.fullName}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <TooltipCell
+                      value={service.customerName || service.customer?.fullName}
+                      maxWidth="max-w-[180px]"
+                    />
+                  )}
+                </td>
 
             <td className="p-3.5 font-medium text-slate-700">
               <TooltipCell value={service.serviceName} maxWidth="max-w-[180px]" />

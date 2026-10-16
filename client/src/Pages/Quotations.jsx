@@ -9,6 +9,7 @@ import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
+import { formatDateOnly as formatDate } from "../utils/dateUtils";
 
 function Quotations() {
   const dispatch = useDispatch();
@@ -84,12 +85,6 @@ function Quotations() {
   const getTypeCount = (type) => {
     if (type === "All") return quotationList.length;
     return quotationList.filter((q) => (q.quotationType || "PC") === type).length;
-  };
-
-  const formatDate = (date) => {
-    if (!date) return "-";
-
-    return new Date(date).toLocaleDateString();
   };
 
   const getStatusClass = (status) => {
@@ -197,12 +192,11 @@ function Quotations() {
 
       <DataTable
         headers={[
-          { key: "qNo", label: "Quotation No", width: "16%" },
-          { key: "customer", label: "Customer", width: "20%" },
-          { key: "date", label: "Date", width: "12%" },
-          { key: "premises", label: "Premises", width: "20%" },
-          { key: "billing", label: "Billing", width: "12%" },
-          { key: "status", label: "Status", width: "10%" },
+          { key: "qNo", label: "Quotation No", width: "22%" },
+          { key: "date", label: "Date", width: "14%" },
+          { key: "premises", label: "Premises", width: "28%" },
+          { key: "billing", label: "Billing", width: "18%" },
+          { key: "status", label: "Status", width: "12%" },
           { key: "actions", label: "Actions", width: "160px" },
         ]}
         loading={loading}
@@ -229,10 +223,6 @@ function Quotations() {
                   {quotation.quotationType || "PC"}
                 </span>
               </div>
-            </td>
-
-            <td className="p-3.5 font-medium text-slate-900">
-              <TooltipCell value={quotation.customer?.fullName} maxWidth="max-w-[180px]" />
             </td>
 
             <td className="p-3.5 text-slate-700 whitespace-nowrap">

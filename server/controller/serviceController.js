@@ -1,4 +1,6 @@
+import mongoose from "mongoose";
 import Service from "../model/serviceModel.js";
+import Customer from "../model/customerModel.js";
 import {
   calculateServiceDates,
   normalizeFrequency,
@@ -46,6 +48,12 @@ const ensureUpcomingDates = (service) => {
       doc.nextServiceDate = nextServiceDate;
     }
   }
+
+  // Ensure consistent customerName on output
+  if (!doc.customerName && doc.customer && typeof doc.customer === "object") {
+    doc.customerName = doc.customer.fullName || doc.customer.companyName || "";
+  }
+
   return doc;
 };
 
@@ -86,13 +94,53 @@ export const createService = async (req, res) => {
       payload.frequency = normalizeFrequency(payload.frequency);
     }
 
+    const isOneTime = payload.frequency === "one-time";
+
+    // Conditional Customer Validation
+    if (isOneTime) {
+      if (!payload.customerName || !String(payload.customerName).trim()) {
+        return res.status(400).json({
+          message: "Customer name is required for One Time services",
+        });
+      }
+      payload.customerName = String(payload.customerName).trim();
+
+      // For standalone one-time services, sanitize customer reference:
+      // If customer is empty string or not a valid ObjectId, delete it so no invalid reference is stored.
+      if (!payload.customer || payload.customer === "") {
+        delete payload.customer;
+      } else if (!mongoose.Types.ObjectId.isValid(payload.customer)) {
+        delete payload.customer;
+      }
+    } else {
+      // Non-one-time services strictly require an existing customer
+      if (!payload.customer || payload.customer === "") {
+        return res.status(400).json({
+          message: "Customer is required for recurring services",
+        });
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(payload.customer)) {
+        return res.status(400).json({
+          message: "Invalid Customer ID",
+        });
+      }
+
+      const existingCustomer = await Customer.findById(payload.customer);
+      if (!existingCustomer) {
+        return res.status(404).json({
+          message: "Customer not found",
+        });
+      }
+    }
+
     // Sanitize employee field
     if (!payload.employee || payload.employee === "") {
       delete payload.employee;
     }
 
     // Auto-allocate atomic ONE_TIME_JOB number for One Time Job records
-    if (payload.frequency === "one-time") {
+    if (isOneTime) {
       const { documentNumber: jobNo } = await generateDocumentNumber(
         "ONE_TIME_JOB"
       );
@@ -110,6 +158,11 @@ export const createService = async (req, res) => {
 
     const newService = new Service(payload);
     await newService.save();
+
+    await newService.populate([
+      { path: "customer", select: "fullName phone" },
+      { path: "employee", select: "fullName role" },
+    ]);
 
     res.status(201).json({
       message: "Service Created",
@@ -183,13 +236,68 @@ export const updateService = async (req, res) => {
       });
     }
 
+    const effectiveFreq = payload.frequency || existingService.frequency;
+    const isOneTime = effectiveFreq === "one-time";
+
+    // Conditional Customer Validation for Update
+    if (isOneTime) {
+      if (payload.customerName !== undefined) {
+        if (!payload.customerName || !String(payload.customerName).trim()) {
+          return res.status(400).json({
+            message: "Customer name is required for One Time services",
+          });
+        }
+        payload.customerName = String(payload.customerName).trim();
+      } else if (!existingService.customerName && !existingService.customer) {
+        return res.status(400).json({
+          message: "Customer name is required for One Time services",
+        });
+      }
+
+      // Handle customer field:
+      // If customer is explicitly passed as null/empty or invalid ObjectId, set to null
+      if (payload.customer === "" || payload.customer === null) {
+        payload.customer = null;
+      } else if (payload.customer && !mongoose.Types.ObjectId.isValid(payload.customer)) {
+        payload.customer = null;
+      }
+    } else {
+      // Frequency is recurring (not one-time). Customer selection is mandatory!
+      const targetCustomer =
+        payload.customer !== undefined ? payload.customer : existingService.customer;
+
+      if (!targetCustomer || targetCustomer === "") {
+        return res.status(400).json({
+          message: "Customer is required for recurring services",
+        });
+      }
+
+      const idToCheck =
+        typeof targetCustomer === "object" ? targetCustomer._id : targetCustomer;
+
+      if (!mongoose.Types.ObjectId.isValid(idToCheck)) {
+        return res.status(400).json({
+          message: "Invalid Customer ID",
+        });
+      }
+
+      const existingCustomer = await Customer.findById(idToCheck);
+      if (!existingCustomer) {
+        return res.status(404).json({
+          message: "Customer not found",
+        });
+      }
+
+      payload.customer = idToCheck;
+    }
+
     // Sanitize employee field to prevent CastError when cleared or empty
     if (!payload.employee || payload.employee === "") {
       payload.employee = null;
     }
 
     // Sanitize jobNo field
-    if (payload.frequency === "one-time") {
+    if (isOneTime) {
       if (typeof payload.jobNo === "string" && payload.jobNo.trim()) {
         payload.jobNo = payload.jobNo.trim();
       } else if (!existingService.jobNo) {
@@ -222,7 +330,6 @@ export const updateService = async (req, res) => {
     }
 
     const effectiveDate = payload.serviceDate || existingService.serviceDate;
-    const effectiveFreq = payload.frequency || existingService.frequency;
 
     if (payload.serviceDate || payload.frequency) {
       const { nextServiceDate, upcomingServiceDates } = calculateServiceDates(

@@ -9,6 +9,7 @@ import {
   calculateServiceDates,
 } from "../utils/serviceDateCalculator";
 import { FaSearch } from "react-icons/fa";
+import { formatDateOnly as formatDate } from "../utils/dateUtils";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -41,13 +42,6 @@ const getCustomer = (record) => {
 
   return {};
 };
-
-const formatDate = (date) =>
-  new Date(date).toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 
 const getRelativeDate = (date, today) => {
   const days = Math.round((getStartOfDay(date) - today) / DAY_IN_MS);
@@ -147,8 +141,8 @@ function Alerts() {
       const customer = getCustomer(service);
       const commonAlert = {
         id: `service-${service._id}`,
-        customerId: customer._id,
-        customerName: customer.fullName || "Unknown Customer",
+        customerId: customer._id || null,
+        customerName: service.customerName || customer.fullName || "Unknown Customer",
         title: service.serviceName || "Service",
         reference: `Status: ${service.status || "-"} | Frequency: ${
           service.frequency || "-"

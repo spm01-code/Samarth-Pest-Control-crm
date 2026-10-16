@@ -11,6 +11,7 @@ import { getErrorMessage } from "../utils/errorHandler";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
 import { BASE_URL } from "../API/apiConfig";
+import { formatDateOnly as formatDate } from "../utils/dateUtils";
 
 function Renewals() {
   const dispatch = useDispatch();
@@ -25,8 +26,6 @@ function Renewals() {
   useEffect(() => {
     dispatch(fetchRenewals());
   }, [dispatch]);
-
-  const formatDate = (date) => (date ? new Date(date).toLocaleDateString() : "-");
 
   const renewalList = Array.isArray(renewals) ? renewals : [];
 

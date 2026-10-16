@@ -23,6 +23,7 @@ import {
   updateCompanySettingsAPI,
 } from "../API/companySettingAPI";
 import { toast } from "../utils/toast";
+import { formatDateOnly, formatTimestamp } from "../utils/dateUtils";
 import { getErrorMessage } from "../utils/errorHandler";
 import ChangePasswordModal from "../Components/ChangePasswordModal";
 import { refreshSession, logout } from "../slices/authSlice";
@@ -78,7 +79,9 @@ function Settings() {
     nongstBankAccount: "50200102548611",
     nongstBankIfsc: "HDFC0000051",
     pan: "JCHPM5440Q",
-    upiId: "8356080548@okbizaxis"
+    upiId: "8356080548@okbizaxis",
+    defaultHsnCode: "998531",
+    defaultSacCode: "9985",
   });
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -150,6 +153,8 @@ function Settings() {
             nongstBankIfsc: s.nongstBankIfsc || prev.nongstBankIfsc,
             pan: s.pan || prev.pan,
             upiId: s.upiId || prev.upiId,
+            defaultHsnCode: s.defaultHsnCode !== undefined ? s.defaultHsnCode : (prev.defaultHsnCode || ""),
+            defaultSacCode: s.defaultSacCode !== undefined ? s.defaultSacCode : (prev.defaultSacCode || ""),
           }));
           
           if (s.numberingYear) {
@@ -534,6 +539,21 @@ function Settings() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Tax & Invoice Defaults */}
+                  <div className="pt-6 border-t border-slate-100">
+                    <h3 className="text-sm font-bold text-slate-800 mb-3">Tax & Invoice Defaults</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div>
+                        <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Default HSN Code</span>
+                        <span className="text-xs text-slate-700 font-mono block mt-1">{accountData.defaultHsnCode || "Not Set"}</span>
+                      </div>
+                      <div>
+                        <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Default SAC Code</span>
+                        <span className="text-xs text-slate-700 font-mono block mt-1">{accountData.defaultSacCode || "Not Set"}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -643,18 +663,18 @@ function Settings() {
                           Invoice
                         </span>
                         <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
-                          Fixed: SPM/
+                          Fixed: SPMJ/
                         </span>
                       </div>
                       <div className="font-mono text-sm font-bold text-blue-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
                         {numberingConfig?.previews?.INVOICE?.sample ||
                           (numberingYear
-                            ? `SPM/${
+                            ? `SPMJ/${
                                 String(numberingYear).includes("-")
                                   ? numberingYear
                                   : `${numberingYear}-${Number(numberingYear) + 1}`
-                              }/0001`
-                            : "SPM/2026-2027/0001")}
+                              }/01`
+                            : "SPMJ/2026-2027/01")}
                       </div>
                       <p className="text-[11px] text-slate-400">
                         Financial year sequential series (e.g. 2026-2027)
@@ -857,7 +877,7 @@ function Settings() {
                                     </p>
                                     {tpl.createdAt && (
                                       <p className="text-[10px] text-slate-400 mt-2">
-                                        Uploaded: {new Date(tpl.createdAt).toLocaleDateString("en-GB", { day: 'numeric', month: 'short', year: 'numeric' })}
+                                        Uploaded: {formatDateOnly(tpl.createdAt)}
                                         {tpl.uploadedBy?.name ? ` by ${tpl.uploadedBy.name}` : ""}
                                       </p>
                                     )}
@@ -1299,6 +1319,47 @@ function Settings() {
                         })
                       }
                       className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <hr className="border-slate-100" />
+                <h3 className="text-sm font-semibold text-slate-800">
+                  Tax & Invoice Defaults
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Default HSN Code
+                    </label>
+                    <input
+                      type="text"
+                      value={editCompanyData.defaultHsnCode || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          defaultHsnCode: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. 998531"
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Default SAC Code
+                    </label>
+                    <input
+                      type="text"
+                      value={editCompanyData.defaultSacCode || ""}
+                      onChange={(e) =>
+                        setEditCompanyData({
+                          ...editCompanyData,
+                          defaultSacCode: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. 9985"
+                      className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white outline-none focus:border-blue-600 text-xs font-mono"
                     />
                   </div>
                 </div>

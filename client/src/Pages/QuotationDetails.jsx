@@ -11,6 +11,7 @@ import CreateQuotationModal from "../Components/CreateQuotationModel";
 import DocumentPreviewModal from "../Components/DocumentPreviewModal";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { formatDateOnly as formatDate, formatTimestamp } from "../utils/dateUtils";
 
 const statusStyles = {
   Draft: "bg-gray-100 text-gray-700",
@@ -19,30 +20,13 @@ const statusStyles = {
   Rejected: "bg-red-100 text-red-700",
 };
 
-const formatDate = (date) => {
-  if (!date) return "-";
-
-  const parsedDate = new Date(date);
-  return Number.isNaN(parsedDate.getTime())
-    ? "-"
-    : parsedDate.toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
-};
-
 const formatAmount = (amount) =>
   Number(amount || 0).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 
-const formatPdfDate = (date) => {
-  if (!date) return "-";
-
-  return new Date(date).toLocaleDateString("en-GB");
-};
+const formatPdfDate = (date) => formatDate(date);
 
 const safeText = (value) =>
   String(value ?? "")
@@ -214,7 +198,7 @@ function QuotationDetails() {
           <div className="rounded-2xl bg-white p-5 shadow-sm">
             <p className="text-sm text-gray-500">Last Updated</p>
             <p className="mt-2 font-semibold">
-              {formatDate(quotation.updatedAt)}
+              {formatTimestamp(quotation.updatedAt)}
             </p>
           </div>
         </div>
@@ -239,7 +223,7 @@ function QuotationDetails() {
           <div className="rounded-2xl bg-white p-5 shadow-sm">
             <p className="text-sm text-gray-500">Last Updated</p>
             <p className="mt-2 font-semibold">
-              {formatDate(quotation.updatedAt)}
+              {formatTimestamp(quotation.updatedAt)}
             </p>
           </div>
         </div>
