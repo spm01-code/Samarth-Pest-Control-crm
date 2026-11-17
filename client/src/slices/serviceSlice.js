@@ -6,6 +6,7 @@ import {
   createServiceAPI,
   updateServiceAPI,
   deleteServiceAPI,
+  recordServicePaymentAPI,
 } from "../API/serviceAPI";
 import { refreshSession } from "./authSlice";
 
@@ -93,6 +94,20 @@ export const deleteService = createAsyncThunk(
   },
 );
 
+// Record Service Payment
+export const recordServicePayment = createAsyncThunk(
+  "services/recordServicePayment",
+  async ({ id, paymentData }, thunkAPI) => {
+    try {
+      return await withFreshToken(thunkAPI, (token) =>
+        recordServicePaymentAPI(id, paymentData, token)
+      );
+    } catch (error) {
+      return thunkAPI.rejectWithValue(error.message);
+    }
+  },
+);
+
 const serviceSlice = createSlice({
   name: "services",
   initialState: {
@@ -167,6 +182,20 @@ const serviceSlice = createSlice({
         state.services = state.services.filter(
           (service) => service._id !== action.payload,
         );
+      })
+
+      // Record Payment
+      .addCase(recordServicePayment.fulfilled, (state, action) => {
+        const updatedService = action.payload.service;
+        if (updatedService) {
+          const index = state.services.findIndex(
+            (service) => service._id === updatedService._id,
+          );
+          if (index !== -1) {
+            state.services[index] = updatedService;
+          }
+          state.service = updatedService;
+        }
       });
   },
 });

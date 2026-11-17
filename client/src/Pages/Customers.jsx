@@ -26,16 +26,21 @@ function Customers() {
 
   const searchLower = search.toLowerCase();
   const filteredCustomers = customerList.filter((customer) => {
-    const custType = customer.customerType?.toLowerCase() || "";
-    if (filter === "residential" && custType !== "residential") {
-      return false;
-    }
-    if (filter === "commercial" && custType !== "commercial") {
-      return false;
+    if (filter === "archived") {
+      if (!customer.isArchived) return false;
+    } else {
+      if (customer.isArchived) return false;
+      const custType = customer.customerType?.toLowerCase() || "";
+      if (filter === "residential" && custType !== "residential") {
+        return false;
+      }
+      if (filter === "commercial" && custType !== "commercial") {
+        return false;
+      }
     }
 
     const fullName = customer.fullName?.toLowerCase() || "";
-    const jobNo = customer.jobNo?.toLowerCase() || "";
+    const jobNo = customer.jobNo?.toLowerCase() || customer.archivedJobNo?.toLowerCase() || "";
     const phone = customer.phone || "";
     const alternatePhone = customer.alternatePhone || "";
     const companyName = customer.companyName?.toLowerCase() || "";
@@ -70,12 +75,12 @@ function Customers() {
         </button>
       </div>
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
           {
             key: "total",
-            label: "Total Customers",
-            count: customerList.length,
+            label: "Active Customers",
+            count: customerList.filter((c) => !c.isArchived).length,
             color: "text-slate-900",
             background: "bg-slate-50 border-slate-200",
             activeClass: "ring-2 ring-slate-700 border-slate-400 shadow-md",
@@ -83,7 +88,7 @@ function Customers() {
           {
             key: "residential",
             label: "Residential",
-            count: customerList.filter((c) => c.customerType?.toLowerCase() === "residential").length,
+            count: customerList.filter((c) => !c.isArchived && c.customerType?.toLowerCase() === "residential").length,
             color: "text-green-700",
             background: "bg-green-50 border-green-200",
             activeClass: "ring-2 ring-green-600 border-green-400 shadow-md",
@@ -91,10 +96,18 @@ function Customers() {
           {
             key: "commercial",
             label: "Commercial",
-            count: customerList.filter((c) => c.customerType?.toLowerCase() === "commercial").length,
+            count: customerList.filter((c) => !c.isArchived && c.customerType?.toLowerCase() === "commercial").length,
             color: "text-blue-700",
             background: "bg-blue-50 border-blue-200",
             activeClass: "ring-2 ring-blue-600 border-blue-400 shadow-md",
+          },
+          {
+            key: "archived",
+            label: "Archived Customers",
+            count: customerList.filter((c) => c.isArchived).length,
+            color: "text-amber-700",
+            background: "bg-amber-50 border-amber-200",
+            activeClass: "ring-2 ring-amber-600 border-amber-400 shadow-md",
           },
         ].map((card) => {
           const isActive = filter === card.key;

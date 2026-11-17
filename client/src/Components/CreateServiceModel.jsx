@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { createService } from "../slices/serviceSlice";
 import {
@@ -9,8 +10,15 @@ import {
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
+import { useScrollLock } from "../hooks/useScrollLock";
 
-function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
+function CreateServiceModal({
+  onClose,
+  initialCustomer = null,
+  initialFrequency = "monthly",
+  onCreated,
+}) {
+  useScrollLock(true);
   const dispatch = useDispatch();
   const [isClosing, setIsClosing] = useState(false);
 
@@ -28,9 +36,10 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
     customer: initialCustomer?._id || "",
     customerName: initialCustomer?.fullName || "",
     employee: "",
+    operatorName: "",
     serviceName: "",
     desc: "",
-    frequency: "monthly",
+    frequency: initialFrequency || "monthly",
     serviceDate: "",
     nextServiceDate: "",
     upcomingServiceDates: [],
@@ -79,17 +88,33 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
     const payload = { ...formData };
 
     if (payload.frequency === "one-time") {
-      if (!payload.customerName || !payload.customerName.trim()) {
+      const finalCustomerName = (formData.customerName || customerSearch || "").trim();
+      if (!finalCustomerName) {
         toast.error("Customer name is required for One Time services");
         return;
       }
-      payload.customerName = payload.customerName.trim();
-      delete payload.customer;
+      payload.customerName = finalCustomerName;
+      if (!payload.customer) {
+        delete payload.customer;
+      }
+      // Requirement 2: Remove Description, Remark and Payment Details from One Time Job creation
+      delete payload.desc;
+      delete payload.remark;
+      delete payload.paymentDetails;
     } else {
       if (!payload.customer) {
         toast.error("Please select a registered customer for this service");
         return;
       }
+    }
+
+    // Requirement 3: Support both existing employee selection and manual operator entry
+    const finalOperator = (formData.operatorName || employeeSearch || "").trim();
+    if (finalOperator) {
+      payload.operatorName = finalOperator;
+    }
+    if (!payload.employee) {
+      delete payload.employee;
     }
 
     try {
@@ -112,16 +137,24 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
     window.setTimeout(onClose, 200);
   };
 
-  return (
+  return createPortal(
     <div
-      className={`fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-start overflow-y-auto z-50 p-4 sm:p-6 ${
+      role="dialog"
+      aria-modal="true"
+      className={`fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-start overflow-y-auto overscroll-contain z-50 p-4 sm:p-6 ${
         isClosing ? "crm-dialog-closing" : ""
       }`}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          handleClose();
+        }
+      }}
     >
       <div
-        className={`bg-white w-full max-w-3xl rounded-3xl shadow-lg p-6 max-h-[90vh] overflow-y-auto ${
+        className={`bg-white w-full max-w-3xl rounded-3xl shadow-lg p-6 max-h-[90vh] overflow-y-auto my-auto ${
           isClosing ? "crm-dialog-panel-closing" : ""
         }`}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-4 mb-6">
           <h2 className="text-2xl font-bold">Create New Service</h2>
@@ -136,123 +169,203 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Customer Selection or Standalone Customer Name based on Frequency */}
-          {formData.frequency === "one-time" ? (
-            <div>
-              <label className="block mb-2 font-medium">
+          {/* Customer Selection: Option A Existing Customer, Option B Manual Customer (for One Time Jobs) */}
+          <div className="relative">
+            <div className="flex items-center justify-between mb-2">
+              <label className="font-medium text-slate-800">
                 Customer Name <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
-                name="customerName"
-                placeholder="Enter Customer Name"
-                value={formData.customerName}
-                onChange={handleChange}
-                className="w-full border rounded-xl p-3"
-                required
-              />
+              <div className="flex items-center gap-2">
+                {formData.customer ? (
+                  <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+                    Registered Customer
+                  </span>
+                ) : (formData.customerName || customerSearch.trim()) ? (
+                  formData.frequency === "one-time" ? (
+                    <span className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
+                      Manual Customer
+                    </span>
+                  ) : null
+                ) : null}
+                {(formData.customer || customerSearch) && !initialCustomer && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        customer: "",
+                        customerName: "",
+                      }));
+                      setCustomerSearch("");
+                    }}
+                    className="text-xs text-red-600 hover:text-red-800 underline cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
-          ) : (
-            <div className="relative">
-              <label className="block mb-2 font-medium">
-                Customer <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                placeholder="Search Customer..."
-                value={customerSearch}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setCustomerSearch(value);
-                  setShowCustomers(value.trim() !== "");
-                  if (!value.trim()) {
-                    setFormData((prev) => ({ ...prev, customer: "", customerName: "" }));
-                  }
-                }}
-                className="w-full border rounded-xl p-3"
-                disabled={Boolean(initialCustomer)}
-                required
-              />
 
-              {showCustomers && customerSearch.trim() !== "" && (
-                <div className="absolute z-50 w-full bg-white border rounded-xl mt-1 max-h-52 overflow-y-auto shadow-lg">
-                  {customers?.filter((customer) => {
-                    const q = customerSearch.toLowerCase().trim();
-                    return (
-                      (customer.fullName?.toLowerCase() || "").includes(q) ||
-                      (customer.jobNo?.toLowerCase() || "").includes(q) ||
-                      (customer.phone?.toLowerCase() || "").includes(q) ||
-                      (customer.companyName?.toLowerCase() || "").includes(q)
-                    );
-                  }).length > 0 ? (
-                    customers
-                      .filter((customer) => {
-                        const q = customerSearch.toLowerCase().trim();
-                        return (
-                          (customer.fullName?.toLowerCase() || "").includes(q) ||
-                          (customer.jobNo?.toLowerCase() || "").includes(q) ||
-                          (customer.phone?.toLowerCase() || "").includes(q) ||
-                          (customer.companyName?.toLowerCase() || "").includes(q)
-                        );
-                      })
-                      .map((customer) => (
-                        <div
-                          key={customer._id}
-                          onClick={() => {
-                            setFormData({
-                              ...formData,
-                              customer: customer._id,
-                              customerName: customer.fullName || "",
-                              address: customer.address || "",
-                              contactPerson: customer.contactPerson || customer.fullName || "",
-                              contactNumber: customer.phone || "",
-                            });
-
-                            setCustomerSearch(customer.fullName);
-                            setShowCustomers(false);
-                          }}
-                          className="p-3 hover:bg-slate-100 cursor-pointer"
-                        >
-                          <div className="font-medium flex justify-between">
-                            <span>{customer.fullName}</span>
-                            {customer.jobNo && <span className="text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold text-slate-700">Job: {customer.jobNo}</span>}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {customer.phone}
-                          </div>
-                        </div>
-                      ))
-                  ) : (
-                    <div className="p-3 text-gray-500">No customer found</div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Employee Search */}
-          <div className="relative">
-            <label className="block mb-2 font-medium">Employee</label>
             <input
               type="text"
-              placeholder="Search Employee..."
+              placeholder={
+                formData.frequency === "one-time"
+                  ? "Search registered customer or enter manual customer name..."
+                  : "Search and select customer..."
+              }
+              value={customerSearch}
+              onChange={(e) => {
+                const value = e.target.value;
+                setCustomerSearch(value);
+                setShowCustomers(value.trim() !== "");
+                setFormData((prev) => ({
+                  ...prev,
+                  customer: "",
+                  customerName: value,
+                }));
+              }}
+              onFocus={() => {
+                if (customerSearch.trim() && !initialCustomer) setShowCustomers(true);
+              }}
+              className="w-full border rounded-xl p-3 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              disabled={Boolean(initialCustomer)}
+              required
+            />
+
+            {showCustomers && customerSearch.trim() !== "" && !initialCustomer && (
+              <div className="absolute z-50 w-full bg-white border border-slate-200 rounded-xl mt-1 max-h-56 overflow-y-auto shadow-xl">
+                {customers?.filter((customer) => {
+                  const q = customerSearch.toLowerCase().trim();
+                  return (
+                    (customer.fullName?.toLowerCase() || "").includes(q) ||
+                    (customer.jobNo?.toLowerCase() || "").includes(q) ||
+                    (customer.phone?.toLowerCase() || "").includes(q) ||
+                    (customer.companyName?.toLowerCase() || "").includes(q)
+                  );
+                }).length > 0 ? (
+                  customers
+                    .filter((customer) => {
+                      const q = customerSearch.toLowerCase().trim();
+                      return (
+                        (customer.fullName?.toLowerCase() || "").includes(q) ||
+                        (customer.jobNo?.toLowerCase() || "").includes(q) ||
+                        (customer.phone?.toLowerCase() || "").includes(q) ||
+                        (customer.companyName?.toLowerCase() || "").includes(q)
+                      );
+                    })
+                    .map((customer) => (
+                      <div
+                        key={customer._id}
+                        onClick={() => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            customer: customer._id,
+                            customerName: customer.fullName || "",
+                            address: customer.address || prev.address,
+                            contactPerson:
+                              customer.contactPerson || customer.fullName || prev.contactPerson,
+                            contactNumber: customer.phone || prev.contactNumber,
+                          }));
+                          setCustomerSearch(customer.fullName);
+                          setShowCustomers(false);
+                        }}
+                        className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 flex items-center justify-between transition"
+                      >
+                        <div>
+                          <div className="font-medium text-slate-800">
+                            {customer.fullName}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {customer.companyName ? `${customer.companyName} • ` : ""}
+                            {customer.phone || "No phone"}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {customer.jobNo && (
+                            <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                              Job: {customer.jobNo}
+                            </span>
+                          )}
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-medium">
+                            CRM
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  <div className="p-3 text-sm text-slate-500 border-b border-slate-100">
+                    No registered customer matching "{customerSearch.trim()}"
+                  </div>
+                )}
+
+                {/* Option to use entered name as manual customer for One Time Jobs */}
+                {formData.frequency === "one-time" && (
+                  <div
+                    onClick={() => {
+                      setFormData((prev) => ({
+                        ...prev,
+                        customer: "",
+                        customerName: customerSearch.trim(),
+                      }));
+                      setShowCustomers(false);
+                    }}
+                    className="p-3 bg-amber-50/80 hover:bg-amber-100/80 cursor-pointer text-amber-900 flex items-center justify-between transition"
+                  >
+                    <div className="text-sm">
+                      Use <strong className="font-semibold">"{customerSearch.trim()}"</strong> as manual customer
+                    </div>
+                    <span className="text-[10px] bg-amber-200/80 text-amber-800 px-2 py-0.5 rounded font-bold">
+                      Manual
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Employee / Operator Selection (Registered or Manual) */}
+          <div className="relative">
+            <div className="flex items-center justify-between mb-2">
+              <label className="font-medium text-slate-800">
+                Employee / Operator
+              </label>
+              {formData.employee ? (
+                <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+                  Registered Employee
+                </span>
+              ) : formData.operatorName || employeeSearch.trim() ? (
+                <span className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
+                  Manual Operator
+                </span>
+              ) : null}
+            </div>
+            <input
+              type="text"
+              placeholder="Search employee or type manual operator name..."
               value={employeeSearch}
               onChange={(e) => {
                 const value = e.target.value;
                 setEmployeeSearch(value);
                 setShowEmployees(value.trim() !== "");
+                setFormData((prev) => ({
+                  ...prev,
+                  employee: "",
+                  operatorName: value,
+                }));
               }}
-              className="w-full border rounded-xl p-3"
-              required
+              onFocus={() => {
+                if (employeeSearch.trim()) setShowEmployees(true);
+              }}
+              className="w-full border rounded-xl p-3 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
             />
 
             {showEmployees && employeeSearch.trim() !== "" && (
-              <div className="absolute z-40 w-full bg-white border rounded-xl mt-1 max-h-52 overflow-y-auto shadow-lg">
+              <div className="absolute z-40 w-full bg-white border border-slate-200 rounded-xl mt-1 max-h-56 overflow-y-auto shadow-xl">
                 {employees?.filter((employee) =>
                   employee.fullName
                     .toLowerCase()
                     .includes(employeeSearch.toLowerCase()),
-                ).length > 0 ? (
+                ).length > 0 && (
                   employees
                     .filter((employee) =>
                       employee.fullName
@@ -266,22 +379,45 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
                           setFormData({
                             ...formData,
                             employee: employee._id,
+                            operatorName: employee.fullName,
                           });
-
                           setEmployeeSearch(employee.fullName);
                           setShowEmployees(false);
                         }}
-                        className="p-3 hover:bg-slate-100 cursor-pointer"
+                        className="p-3 hover:bg-slate-50 cursor-pointer border-b border-slate-100 flex items-center justify-between"
                       >
-                        <div className="font-medium">{employee.fullName}</div>
-                        <div className="text-sm text-gray-500">
-                          {employee.role}
+                        <div>
+                          <div className="font-medium text-slate-800">{employee.fullName}</div>
+                          <div className="text-xs text-slate-500">
+                            {employee.role || "Operator"} {employee.phone ? `• ${employee.phone}` : ""}
+                          </div>
                         </div>
+                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+                          Employee DB
+                        </span>
                       </div>
                     ))
-                ) : (
-                  <div className="p-3 text-gray-500">No employee found</div>
                 )}
+
+                {/* Option to use typed name as manual operator */}
+                <div
+                  onClick={() => {
+                    setFormData({
+                      ...formData,
+                      employee: "",
+                      operatorName: employeeSearch.trim(),
+                    });
+                    setShowEmployees(false);
+                  }}
+                  className="p-3 bg-amber-50/70 hover:bg-amber-100/70 cursor-pointer text-amber-900 flex items-center justify-between"
+                >
+                  <div className="text-sm">
+                    Use <strong className="font-semibold">"{employeeSearch.trim()}"</strong> as manual operator
+                  </div>
+                  <span className="text-[10px] bg-amber-200/80 text-amber-800 px-2 py-0.5 rounded font-bold">
+                    Manual
+                  </span>
+                </div>
               </div>
             )}
           </div>
@@ -299,17 +435,19 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
             />
           </div>
 
-          {/* Description */}
-          <div>
-            <label className="block mb-2 font-medium">Description</label>
-            <textarea
-              name="desc"
-              value={formData.desc}
-              onChange={handleChange}
-              rows="4"
-              className="w-full border rounded-xl p-3"
-            />
-          </div>
+          {/* Description (Only for regular services - Requirement 2) */}
+          {formData.frequency !== "one-time" && (
+            <div>
+              <label className="block mb-2 font-medium">Description</label>
+              <textarea
+                name="desc"
+                value={formData.desc}
+                onChange={handleChange}
+                rows="4"
+                className="w-full border rounded-xl p-3"
+              />
+            </div>
+          )}
 
           {/* Frequency */}
           <div>
@@ -455,28 +593,6 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
                     className="w-full border rounded-xl p-3 bg-white"
                   />
                 </div>
-                <div>
-                  <label className="block mb-2 font-medium text-sm">Payment Details</label>
-                  <input
-                    type="text"
-                    name="paymentDetails"
-                    placeholder="e.g. GPay / Cash / Cheque"
-                    value={formData.paymentDetails}
-                    onChange={handleChange}
-                    className="w-full border rounded-xl p-3 bg-white"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-2 font-medium text-sm">Remark</label>
-                  <input
-                    type="text"
-                    name="remark"
-                    placeholder="Service remarks / observations"
-                    value={formData.remark}
-                    onChange={handleChange}
-                    className="w-full border rounded-xl p-3 bg-white"
-                  />
-                </div>
               </div>
             </div>
           )}
@@ -543,7 +659,8 @@ function CreateServiceModal({ onClose, initialCustomer = null, onCreated }) {
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

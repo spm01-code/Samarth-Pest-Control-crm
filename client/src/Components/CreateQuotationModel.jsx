@@ -10,6 +10,7 @@ import {
 import { fetchCompanySettingsAPI } from "../API/companySettingAPI";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { useScrollLock } from "../hooks/useScrollLock";
 
 const today = () => new Date().toLocaleDateString("en-CA");
 
@@ -38,6 +39,9 @@ const getInitialFormData = (
         ? initialQuotation.customer?._id
         : initialQuotation.customer;
 
+    const snap = initialQuotation.customerSnapshot || {};
+    const hasExistingCust = Boolean(custId || initialCustomer?._id);
+
     const isAtt = initialQuotation.quotationType === "ATT";
 
     return {
@@ -47,6 +51,53 @@ const getInitialFormData = (
         ? new Date(initialQuotation.quotationDate).toISOString().slice(0, 10)
         : today(),
       customer: custId || initialCustomer?._id || "",
+      customerMode: hasExistingCust ? "existing" : "manual",
+      customerSnapshot: {
+        fullName:
+          snap.fullName ||
+          snap.customerName ||
+          (typeof initialQuotation.customer === "object"
+            ? initialQuotation.customer?.fullName
+            : "") ||
+          "",
+        companyName:
+          snap.companyName ||
+          (typeof initialQuotation.customer === "object"
+            ? initialQuotation.customer?.companyName
+            : "") ||
+          "",
+        phone:
+          snap.phone ||
+          (typeof initialQuotation.customer === "object"
+            ? initialQuotation.customer?.phone
+            : "") ||
+          "",
+        email:
+          snap.email ||
+          (typeof initialQuotation.customer === "object"
+            ? initialQuotation.customer?.email
+            : "") ||
+          "",
+        address:
+          snap.address ||
+          (typeof initialQuotation.customer === "object"
+            ? initialQuotation.customer?.address
+            : "") ||
+          initialQuotation.premises ||
+          "",
+        contactPerson:
+          snap.contactPerson ||
+          (typeof initialQuotation.customer === "object"
+            ? initialQuotation.customer?.contactPerson
+            : "") ||
+          "",
+        gstNumber:
+          snap.gstNumber ||
+          (typeof initialQuotation.customer === "object"
+            ? initialQuotation.customer?.gstNumber
+            : "") ||
+          "",
+      },
       premises: initialQuotation.premises || "",
       services:
         Array.isArray(initialQuotation.services) &&
@@ -102,7 +153,17 @@ const getInitialFormData = (
     quotationNumber: "",
     quotationDate: today(),
     customer: initialCustomer?._id || "",
-    premises: "",
+    customerMode: "existing",
+    customerSnapshot: {
+      fullName: initialCustomer?.fullName || "",
+      companyName: initialCustomer?.companyName || "",
+      phone: initialCustomer?.phone || "",
+      email: initialCustomer?.email || "",
+      address: initialCustomer?.address || "",
+      contactPerson: initialCustomer?.contactPerson || "",
+      gstNumber: initialCustomer?.gstNumber || "",
+    },
+    premises: initialCustomer?.address || "",
     services: isAtt ? [] : [emptyService()],
     paymentTerm: isAtt
       ? "Within 10 Days From The Date Of Submission Of invoice"
@@ -132,6 +193,7 @@ function CreateQuotationModal({
   onCreated,
   onUpdated,
 }) {
+  useScrollLock(isOpen);
   const dispatch = useDispatch();
   const { customers = [] } = useSelector((state) => state.customer);
 
@@ -139,10 +201,17 @@ function CreateQuotationModal({
     getInitialFormData(initialCustomer, initialQuotation, initialType),
   );
   const [customerSearch, setCustomerSearch] = useState(() => {
-    if (initialQuotation?.customer) {
+    if (initialQuotation?.customer && typeof initialQuotation.customer === "object") {
       return (
         initialQuotation.customer?.fullName ||
         initialQuotation.customer?.companyName ||
+        ""
+      );
+    }
+    if (initialQuotation?.customerSnapshot) {
+      return (
+        initialQuotation.customerSnapshot.fullName ||
+        initialQuotation.customerSnapshot.companyName ||
         ""
       );
     }
@@ -164,11 +233,14 @@ function CreateQuotationModal({
     if (initialQuotation) {
       setFormData(getInitialFormData(initialCustomer, initialQuotation, initialType));
       const cust = initialQuotation.customer;
-      setCustomerSearch(
-        typeof cust === "object"
-          ? cust?.fullName || cust?.companyName || ""
-          : "",
-      );
+      const snap = initialQuotation.customerSnapshot;
+      if (typeof cust === "object" && cust?.fullName) {
+        setCustomerSearch(cust.fullName || cust.companyName || "");
+      } else if (snap?.fullName || snap?.companyName) {
+        setCustomerSearch(snap.fullName || snap.companyName || "");
+      } else {
+        setCustomerSearch("");
+      }
       return;
     }
 
@@ -177,9 +249,15 @@ function CreateQuotationModal({
   }, [dispatch, isOpen, initialQuotation, initialCustomer, initialType]);
 
   const handleClose = () => {
-    setFormData(getInitialFormData(initialCustomer, initialQuotation));
+    setFormData(getInitialFormData(initialCustomer, initialQuotation, initialType));
+    const cust = initialQuotation?.customer;
+    const snap = initialQuotation?.customerSnapshot;
     setCustomerSearch(
-      initialQuotation?.customer?.fullName || initialCustomer?.fullName || "",
+      (typeof cust === "object" ? cust?.fullName || cust?.companyName : "") ||
+      snap?.fullName ||
+      snap?.companyName ||
+      initialCustomer?.fullName ||
+      ""
     );
     setShowCustomers(false);
     setSubmitError("");
@@ -304,12 +382,40 @@ function CreateQuotationModal({
     );
   });
 
+  const handleSnapshotChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      customerSnapshot: {
+        ...prev.customerSnapshot,
+        [name]: value,
+      },
+      ...(name === "address" && !prev.premises ? { premises: value } : {}),
+    }));
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setSubmitError("");
     setSubmitting(true);
 
     const isAtt = formData.quotationType === "ATT";
+    const isManual = formData.customerMode === "manual" || !formData.customer;
+
+    if (isManual) {
+      const snapName = (formData.customerSnapshot?.fullName || customerSearch || "").trim();
+      if (!snapName) {
+        toast.error("Customer name is required for quotation");
+        setSubmitting(false);
+        return;
+      }
+    } else {
+      if (!formData.customer) {
+        toast.error("Please select a customer or switch to manual entry");
+        setSubmitting(false);
+        return;
+      }
+    }
 
     const quotationData = {
       ...formData,
@@ -331,6 +437,24 @@ function CreateQuotationModal({
           }))
         : [],
     };
+
+    delete quotationData.customerMode;
+
+    if (isManual) {
+      delete quotationData.customer;
+      quotationData.customerSnapshot = {
+        fullName: (formData.customerSnapshot?.fullName || customerSearch || "").trim(),
+        customerName: (formData.customerSnapshot?.fullName || customerSearch || "").trim(),
+        companyName: (formData.customerSnapshot?.companyName || "").trim(),
+        phone: (formData.customerSnapshot?.phone || "").trim(),
+        email: (formData.customerSnapshot?.email || "").trim(),
+        address: (formData.customerSnapshot?.address || formData.premises || "").trim(),
+        contactPerson: (formData.customerSnapshot?.contactPerson || "").trim(),
+        gstNumber: (formData.customerSnapshot?.gstNumber || "").trim(),
+      };
+    } else {
+      delete quotationData.customerSnapshot;
+    }
 
     try {
       if (initialQuotation?._id) {
@@ -435,56 +559,268 @@ function CreateQuotationModal({
             </div>
           </div>
 
-          <div className="relative">
-            <label className="mb-2 block font-medium">Customer</label>
-            <input
-              type="text"
-              value={customerSearch}
-              onChange={(event) => {
-                setCustomerSearch(event.target.value);
-                setFormData((current) => ({ ...current, customer: "" }));
-                setShowCustomers(true);
-              }}
-              onFocus={() => {
-                if (!initialCustomer && !initialQuotation) setShowCustomers(true);
-              }}
-              className="w-full rounded-lg border p-3"
-              placeholder="Search customer..."
-              disabled={Boolean(initialCustomer || initialQuotation)}
-              autoComplete="off"
-              required
-            />
+          {/* Customer Selection: Option A Select Existing Customer, Option B Manual Customer */}
+          <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/50 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <label className="font-semibold text-slate-800 text-sm">
+                  Customer Information <span className="text-red-500">*</span>
+                </label>
+                {formData.customerMode === "existing" && formData.customer ? (
+                  <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">
+                    Registered CRM Customer
+                  </span>
+                ) : formData.customerMode === "manual" ? (
+                  <span className="text-[11px] bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full font-semibold">
+                    Manual Entry (No CRM Record)
+                  </span>
+                ) : null}
+              </div>
 
-            {showCustomers && !initialCustomer && !initialQuotation && (
-              <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border bg-white shadow-lg">
-                {filteredCustomers.length > 0 ? (
-                  filteredCustomers.map((customer) => (
+              {/* Mode Toggle Buttons */}
+              <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-xs font-medium shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      customerMode: "existing",
+                    }));
+                  }}
+                  className={`px-3 py-1 rounded-md transition cursor-pointer ${
+                    formData.customerMode === "existing"
+                      ? "bg-blue-600 text-white font-semibold shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Select Existing Customer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      customer: "",
+                      customerMode: "manual",
+                      customerSnapshot: {
+                        ...prev.customerSnapshot,
+                        fullName: prev.customerSnapshot?.fullName || customerSearch || "",
+                      },
+                    }));
+                  }}
+                  className={`px-3 py-1 rounded-md transition cursor-pointer ${
+                    formData.customerMode === "manual"
+                      ? "bg-amber-600 text-white font-semibold shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  Enter Manually
+                </button>
+              </div>
+            </div>
+
+            {formData.customerMode === "existing" ? (
+              <div className="relative">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={customerSearch}
+                    onChange={(event) => {
+                      const val = event.target.value;
+                      setCustomerSearch(val);
+                      setFormData((current) => ({ ...current, customer: "" }));
+                      setShowCustomers(val.trim() !== "");
+                    }}
+                    onFocus={() => {
+                      if (!initialCustomer) setShowCustomers(true);
+                    }}
+                    className="w-full rounded-lg border border-slate-300 bg-white p-3 text-sm focus:border-blue-600 focus:outline-none"
+                    placeholder="Search existing customer by name, job no, or phone..."
+                    disabled={Boolean(initialCustomer)}
+                    autoComplete="off"
+                  />
+                  {formData.customer && (
                     <button
                       type="button"
-                      key={customer._id}
                       onClick={() => {
-                        setFormData((current) => ({
-                          ...current,
-                          customer: customer._id,
-                          premises: current.premises || customer.address || "",
-                        }));
-                        setCustomerSearch(customer.fullName);
+                        setFormData((prev) => ({ ...prev, customer: "" }));
+                        setCustomerSearch("");
                         setShowCustomers(false);
                       }}
-                      className="block w-full p-3 text-left hover:bg-slate-100"
+                      className="absolute right-3 top-3 text-xs text-red-600 hover:text-red-800 underline font-medium cursor-pointer"
                     >
-                      <span className="flex justify-between items-center font-medium">
-                        <span>{customer.fullName}</span>
-                        {customer.jobNo && <span className="text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold text-slate-700">Job: {customer.jobNo}</span>}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        {customer.phone}
-                      </span>
+                      Change
                     </button>
-                  ))
-                ) : (
-                  <div className="p-3 text-gray-500">No customer found</div>
+                  )}
+                </div>
+
+                {showCustomers && !initialCustomer && (
+                  <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
+                    {filteredCustomers.length > 0 ? (
+                      filteredCustomers.map((customer) => (
+                        <button
+                          type="button"
+                          key={customer._id}
+                          onClick={() => {
+                            setFormData((current) => ({
+                              ...current,
+                              customer: customer._id,
+                              premises: current.premises || customer.address || "",
+                              customerSnapshot: {
+                                fullName: customer.fullName || "",
+                                companyName: customer.companyName || "",
+                                phone: customer.phone || "",
+                                email: customer.email || "",
+                                address: customer.address || "",
+                                contactPerson: customer.contactPerson || "",
+                                gstNumber: customer.gstNumber || "",
+                              },
+                            }));
+                            setCustomerSearch(customer.fullName);
+                            setShowCustomers(false);
+                          }}
+                          className="block w-full p-3 text-left hover:bg-slate-50 border-b border-slate-100 transition cursor-pointer"
+                        >
+                          <div className="flex justify-between items-center font-medium text-slate-800">
+                            <span>{customer.fullName}</span>
+                            <div className="flex items-center gap-1.5">
+                              {customer.jobNo && (
+                                <span className="text-xs font-mono font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded">
+                                  Job: {customer.jobNo}
+                                </span>
+                              )}
+                              <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                CRM
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            {customer.companyName ? `${customer.companyName} • ` : ""}
+                            {customer.phone || "No phone"}
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-3 text-sm text-slate-500 border-b border-slate-100">
+                        No registered customer matching "{customerSearch}"
+                      </div>
+                    )}
+
+                    {customerSearch.trim() !== "" && (
+                      <div
+                        onClick={() => {
+                          setFormData((current) => ({
+                            ...current,
+                            customer: "",
+                            customerMode: "manual",
+                            customerSnapshot: {
+                              ...current.customerSnapshot,
+                              fullName: customerSearch.trim(),
+                            },
+                          }));
+                          setShowCustomers(false);
+                        }}
+                        className="p-3 bg-amber-50 hover:bg-amber-100 cursor-pointer text-amber-900 flex items-center justify-between transition border-t border-amber-100"
+                      >
+                        <div className="text-sm">
+                          Use <strong className="font-semibold">"{customerSearch.trim()}"</strong> as manual customer
+                        </div>
+                        <span className="text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded font-bold">
+                          Manual Entry
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 )}
+              </div>
+            ) : (
+              /* Manual Customer Entry Fields */
+              <div className="space-y-3 pt-1">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Customer / Company Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="fullName"
+                      value={formData.customerSnapshot?.fullName || ""}
+                      onChange={handleSnapshotChange}
+                      placeholder="e.g. Acme Corp or John Doe"
+                      className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm focus:border-blue-600 focus:outline-none"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Contact Person
+                    </label>
+                    <input
+                      type="text"
+                      name="contactPerson"
+                      value={formData.customerSnapshot?.contactPerson || ""}
+                      onChange={handleSnapshotChange}
+                      placeholder="e.g. Mr. Sharma"
+                      className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm focus:border-blue-600 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Phone Number
+                    </label>
+                    <input
+                      type="text"
+                      name="phone"
+                      value={formData.customerSnapshot?.phone || ""}
+                      onChange={handleSnapshotChange}
+                      placeholder="Phone or mobile"
+                      className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm focus:border-blue-600 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.customerSnapshot?.email || ""}
+                      onChange={handleSnapshotChange}
+                      placeholder="customer@example.com"
+                      className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm focus:border-blue-600 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      GST Number
+                    </label>
+                    <input
+                      type="text"
+                      name="gstNumber"
+                      value={formData.customerSnapshot?.gstNumber || ""}
+                      onChange={handleSnapshotChange}
+                      placeholder="e.g. 27AAAAA0000A1Z5"
+                      className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm focus:border-blue-600 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Customer Address
+                  </label>
+                  <input
+                    type="text"
+                    name="address"
+                    value={formData.customerSnapshot?.address || ""}
+                    onChange={handleSnapshotChange}
+                    placeholder="Customer billing or registered address"
+                    className="w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm focus:border-blue-600 focus:outline-none"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -853,8 +1189,13 @@ function CreateQuotationModal({
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={submitting || !formData.customer}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+              disabled={
+                submitting ||
+                (formData.customerMode === "existing" && !formData.customer) ||
+                (formData.customerMode === "manual" &&
+                  !(formData.customerSnapshot?.fullName || customerSearch).trim())
+              }
             >
               {submitting
                 ? initialQuotation

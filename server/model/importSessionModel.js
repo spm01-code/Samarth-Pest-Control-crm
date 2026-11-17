@@ -25,7 +25,7 @@ const importSessionSchema = new mongoose.Schema(
     },
     targetEntity: {
       type: String,
-      enum: ["Customer", "Employee", "Service", "Invoice", "Quotation", "Renewal"],
+      enum: ["Customer", "Employee", "Service", "Invoice", "Quotation", "Renewal", "AMC_Master"],
       trim: true,
     },
     mappings: {

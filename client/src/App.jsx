@@ -26,6 +26,7 @@ import Renewals from "./Pages/Renewals";
 import RenewalDetails from "./Pages/RenewalDetails";
 import Upload from "./Pages/Upload";
 import Settings from "./Pages/Settings";
+import JobNumberManagement from "./Pages/JobNumberManagement";
 import PageNotFound from "./Pages/PageNotFound";
 import ServerWakingUpLoader from "./Components/ServerWakingUpLoader";
 import ToastContainer from "./Components/ToastContainer";
@@ -108,6 +109,7 @@ function App() {
         <Route path="/attendance" element={<Attendance />} />
 
         <Route path="/services" element={<Services />} />
+        <Route path="/one-time-jobs" element={<Services isOneTimePage={true} />} />
         
 
         <Route path="/quotation" element={<Quotations />} />
@@ -117,6 +119,7 @@ function App() {
 
         <Route path="/profile" element={<Profile />} />
         <Route path="/upload" element={<Upload />} />
+        <Route path="/job-numbers" element={<JobNumberManagement />} />
         <Route path="/settings" element={<Settings />} />
 
 

@@ -5,6 +5,7 @@ import { updateInvoice } from "../slices/invoiceSlice";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateForInput } from "../utils/dateUtils";
+import { useScrollLock } from "../hooks/useScrollLock";
 
 const getInitialFormData = (invoice) => {
   const hasIgst = (invoice?.tax?.igstPercentage > 0 || invoice?.tax?.igstAmount > 0);
@@ -46,6 +47,7 @@ function EditInvoiceModal({
   invoice,
   onUpdated,
 }) {
+  useScrollLock(isOpen);
   const dispatch = useDispatch();
   const { invoices } = useSelector((state) => state.invoice);
 

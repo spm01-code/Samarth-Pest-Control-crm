@@ -6,13 +6,25 @@ import CompanySetting from "../model/companySettingModel.js";
  * These are strictly backend-controlled constants and can NEVER be modified by users.
  */
 export const DOCUMENT_CONFIG = Object.freeze({
+  GST_INVOICE: {
+    type: "GST_INVOICE",
+    label: "GST Invoice (Tax)",
+    prefix: "SPM/",
+    padding: 2,
+  },
+  NON_GST_INVOICE: {
+    type: "NON_GST_INVOICE",
+    label: "Non-GST Invoice",
+    prefix: "SPMJ/",
+    padding: 2,
+  },
   INVOICE: {
     type: "INVOICE",
     label: "Invoice",
-    prefix: "SPMJ/",
+    prefix: "SPM/",
     padding: 2,
-    nonGstPrefix: "SPM/",
-    nonGstPadding: 4,
+    nonGstPrefix: "SPMJ/",
+    nonGstPadding: 2,
   },
   PC_QUOTATION: {
     type: "PC_QUOTATION",
@@ -105,7 +117,11 @@ export const parseYearInput = (yearInput) => {
  * while quotations, renewals, and one time jobs use the calendar year (e.g. 2026).
  */
 export const getYearForDocType = (documentType, parsedYear) => {
-  if (documentType === "INVOICE") {
+  if (
+    documentType === "INVOICE" ||
+    documentType === "GST_INVOICE" ||
+    documentType === "NON_GST_INVOICE"
+  ) {
     return parsedYear.financialYear;
   }
   return parsedYear.baseYear;
@@ -161,7 +177,13 @@ export const getConfiguredYear = async () => {
  * @returns {Promise<{ documentNumber: string, documentType: string, year: string|number, seq: number }>}
  */
 export const generateDocumentNumber = async (documentType, options = {}) => {
-  const config = DOCUMENT_CONFIG[documentType];
+  let targetDocType = documentType;
+  if (documentType === "INVOICE") {
+    const isNonGst = options.invoiceType === "NON_GST" || options.isNonGst === true;
+    targetDocType = isNonGst ? "NON_GST_INVOICE" : "GST_INVOICE";
+  }
+
+  const config = DOCUMENT_CONFIG[targetDocType] || DOCUMENT_CONFIG[documentType];
   if (!config) {
     throw new Error(
       `Unknown document type "${documentType}". Must be one of: ${Object.keys(
@@ -173,7 +195,7 @@ export const generateDocumentNumber = async (documentType, options = {}) => {
   const rawYear = options.year || (await getConfiguredYear());
   const parsed = parseYearInput(rawYear);
   const baseYear = parsed.baseYear;
-  const docYear = getYearForDocType(documentType, parsed);
+  const docYear = getYearForDocType(targetDocType, parsed);
 
   const updateQuery = { $inc: { seq: 1 } };
   const findOptions = {
@@ -186,30 +208,19 @@ export const generateDocumentNumber = async (documentType, options = {}) => {
   }
 
   const counter = await DocumentSequence.findOneAndUpdate(
-    { documentType, year: baseYear },
+    { documentType: targetDocType, year: baseYear },
     updateQuery,
     findOptions
   );
 
-  let prefix = config.prefix;
-  let padding = config.padding || 4;
-
-  if (documentType === "INVOICE") {
-    const isNonGst = options.invoiceType === "NON_GST" || options.isNonGst === true;
-    if (isNonGst) {
-      prefix = config.nonGstPrefix || "SPM/";
-      padding = config.nonGstPadding || 4;
-    } else {
-      prefix = config.prefix || "SPMJ/";
-      padding = config.padding || 2;
-    }
-  }
+  const prefix = config.prefix;
+  const padding = config.padding || 2;
 
   const documentNumber = formatDocumentNumber(prefix, docYear, counter.seq, padding);
 
   return {
     documentNumber,
-    documentType,
+    documentType: targetDocType,
     year: docYear,
     baseYear,
     seq: counter.seq,
@@ -234,29 +245,25 @@ export const getDocumentNumberPreview = (documentType, year, sampleSeq = 1, opti
     options = sampleSeq;
     sampleSeq = 1;
   }
-  const config = DOCUMENT_CONFIG[documentType];
+
+  let targetDocType = documentType;
+  if (documentType === "INVOICE") {
+    const isNonGst = options.invoiceType === "NON_GST" || options.isNonGst === true;
+    targetDocType = isNonGst ? "NON_GST_INVOICE" : "GST_INVOICE";
+  }
+
+  const config = DOCUMENT_CONFIG[targetDocType] || DOCUMENT_CONFIG[documentType];
   if (!config) {
     throw new Error(`Unknown document type "${documentType}"`);
   }
   const parsed = parseYearInput(year || new Date().getFullYear());
-  const docYear = getYearForDocType(documentType, parsed);
+  const docYear = getYearForDocType(targetDocType, parsed);
 
-  let prefix = config.prefix;
-  let padding = config.padding || 4;
-
-  if (documentType === "INVOICE") {
-    const isNonGst = options.invoiceType === "NON_GST" || options.isNonGst === true;
-    if (isNonGst) {
-      prefix = config.nonGstPrefix || "SPM/";
-      padding = config.nonGstPadding || 4;
-    } else {
-      prefix = config.prefix || "SPMJ/";
-      padding = config.padding || 2;
-    }
-  }
+  const prefix = config.prefix;
+  const padding = config.padding || 2;
 
   return {
-    documentType,
+    documentType: targetDocType,
     label: config.label,
     prefix,
     previewNumber: formatDocumentNumber(prefix, docYear, sampleSeq, padding),
@@ -322,10 +329,23 @@ export const syncExistingDocumentSequences = async (models = {}) => {
 
   // 1. Invoices
   if (Invoice) {
-    const invoices = await Invoice.find().select("invoiceNumber");
+    const invoices = await Invoice.find().select("invoiceNumber invoiceType");
     for (const inv of invoices) {
       if (!inv.invoiceNumber) continue;
-      // Match formats: SPMJ/YYYY-YYYY/NN, SPM/YYYY-YYYY/NNNN, SPM/INV/YYYY-YYYY/NNNN, SPM/YYYY/NNNN, SPM-YYYY-NNNN, INV-YYYY-NNNN, INV-NNNN
+      // Match Non-GST SPMJ: SPMJ/YYYY-YYYY/NN
+      const mNonGst = inv.invoiceNumber.match(/^SPMJ\/(\d{4})[-/](?:\d{2,4})[-\/](\d+)/i);
+      if (mNonGst) {
+        await ensureMaxSeq("NON_GST_INVOICE", Number(mNonGst[1]), Number(mNonGst[2]));
+        continue;
+      }
+      // Match GST SPM: SPM/YYYY-YYYY/NN (strictly 2-part sequence, not SPM/INV/...)
+      const mGst = inv.invoiceNumber.match(/^SPM\/(\d{4})[-/](?:\d{2,4})[-\/](\d+)$/i);
+      if (mGst) {
+        await ensureMaxSeq("GST_INVOICE", Number(mGst[1]), Number(mGst[2]));
+        continue;
+      }
+
+      // Legacy fallback for previous numbering sequence
       const m0 = inv.invoiceNumber.match(/(?:SPMJ|SPM)\/(?:INV\/)?(\d{4})[-/](?:\d{2,4})[-\/](\d+)/i);
       if (m0) {
         await ensureMaxSeq("INVOICE", Number(m0[1]), Number(m0[2]));

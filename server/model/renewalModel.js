@@ -9,6 +9,17 @@ const renewalSchema = new mongoose.Schema(
       ref: "Customer",
       required: true,
     },
+    customerSnapshot: {
+      jobNo: { type: String, trim: true },
+      fullName: { type: String, trim: true },
+      companyName: { type: String, trim: true },
+      address: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      email: { type: String, trim: true },
+      gstNumber: { type: String, trim: true },
+      contactPerson: { type: String, trim: true },
+      snapshotTakenAt: { type: Date, default: Date.now },
+    },
     services: [
       {
         serviceName: {
@@ -92,6 +103,12 @@ const renewalSchema = new mongoose.Schema(
       type: String,
       enum: ["Draft", "Sent", "Completed"],
       default: "Draft",
+    },
+    importMeta: {
+      batchId: { type: String, index: true },
+      sourceJobNo: { type: String, trim: true },
+      sourceRows: [{ type: Number }],
+      importedAt: { type: Date },
     },
   },
   { timestamps: true },

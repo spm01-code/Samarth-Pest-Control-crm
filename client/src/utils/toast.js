@@ -109,6 +109,22 @@ class ToastManager {
   }
 
   dismiss(id) {
+    const target = this.toasts.find((t) => t.id === id);
+    if (!target) return;
+    if (target.isExiting) return;
+
+    // Flag as exiting so exit animation plays
+    target.isExiting = true;
+    this.notify();
+
+    // Remove from active list after exit animation completes (240ms)
+    setTimeout(() => {
+      this.toasts = this.toasts.filter((t) => t.id !== id);
+      this.notify();
+    }, 240);
+  }
+
+  remove(id) {
     const initialLen = this.toasts.length;
     this.toasts = this.toasts.filter((t) => t.id !== id);
     if (this.toasts.length !== initialLen) {

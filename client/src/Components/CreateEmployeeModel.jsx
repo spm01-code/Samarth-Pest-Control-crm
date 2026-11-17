@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useDispatch } from "react-redux";
 import { createEmployee, updateEmployee } from "../slices/employeeSlice";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { useScrollLock } from "../hooks/useScrollLock";
 
 function CreateEmployeeModel({
   isOpen,
@@ -10,6 +12,7 @@ function CreateEmployeeModel({
   employee = null,
   onUpdated,
 }) {
+  useScrollLock(isOpen);
   const dispatch = useDispatch();
   const isEdit = Boolean(employee);
 
@@ -112,9 +115,21 @@ function CreateEmployeeModel({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6 overflow-y-auto overscroll-contain animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !loading) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="bg-white rounded-2xl w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto my-auto shadow-2xl animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">
             {isEdit ? "Edit Employee" : "Add Employee"}
@@ -297,7 +312,8 @@ function CreateEmployeeModel({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

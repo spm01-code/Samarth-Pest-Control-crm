@@ -1,79 +1,105 @@
-import Customer from "../model/customerModel.js";
-
-// Helper: Auto-generate Job No if not provided
-const generateNextJobNo = async (fullName) => {
-  const initial = (fullName && fullName.trim().charAt(0).toUpperCase()) || "C";
-  const prefix = /^[A-Z]$/.test(initial) ? initial : "C";
-  const regex = new RegExp(`^${prefix}\\/(\\d+)$`, "i");
-  const matchingCustomers = await Customer.find({ jobNo: regex }).select("jobNo").lean();
-  let maxNum = 0;
-  for (const c of matchingCustomers) {
-    const match = c.jobNo ? c.jobNo.match(regex) : null;
-    if (match) {
-      const num = parseInt(match[1], 10);
-      if (num > maxNum) maxNum = num;
-    }
-  }
-  const nextNum = String(maxNum + 1).padStart(2, "0");
-  return `${prefix}/${nextNum}`;
-};
+﻿import Customer from "../model/customerModel.js";
+import {
+  getPrefixFromName,
+  allocateSmallestJobNo,
+  manualAllocateJobNo,
+  releaseJobNo,
+  restoreJobNo,
+} from "../utils/jobNumberService.js";
 
 // Create Customer
 export const createCustomer = async (req, res) => {
   try {
     const customerData = { ...req.body };
 
-    if (!customerData.jobNo || !customerData.jobNo.trim()) {
-      customerData.jobNo = await generateNextJobNo(customerData.fullName);
+    if (!customerData.fullName || !customerData.fullName.trim()) {
+      return res.status(400).json({ message: "Full Name is required" });
     }
 
-    const newCustomer = new Customer(customerData);
+    // Allocate Job Number
+    let assignedJobNo = "";
 
+    if (customerData.jobNo && customerData.jobNo.trim()) {
+      // Manual selection
+      assignedJobNo = customerData.jobNo.trim().toUpperCase();
+    } else {
+      // Automatic smallest available allocation
+      const prefix = getPrefixFromName(customerData.fullName);
+      if (!prefix) {
+        return res.status(400).json({
+          message: "Could not determine an alphabetic prefix from customer name. Please specify Job Number manually.",
+        });
+      }
+      assignedJobNo = await allocateSmallestJobNo(
+        prefix,
+        null,
+        customerData.fullName
+      );
+    }
+
+    customerData.jobNo = assignedJobNo;
+    const newCustomer = new Customer(customerData);
     await newCustomer.save();
+
+    // Link customerId on JobNumber record
+    if (customerData.jobNo) {
+      await manualAllocateJobNo(
+        customerData.jobNo,
+        newCustomer._id,
+        newCustomer.fullName
+      );
+    }
 
     res.status(201).json({
       message: "Customer Created",
       customer: newCustomer,
     });
-
   } catch (error) {
     res.status(500).json({
       message: error.message,
     });
   }
 };
-
 
 // Get All Customers
 export const getAllCustomers = async (req, res) => {
   try {
-    const { search } = req.query;
+    const { search, includeArchived, status } = req.query;
     let query = {};
+
+    if (status === "archived" || includeArchived === "only") {
+      query.isArchived = true;
+    } else if (includeArchived !== "true") {
+      query.isArchived = { $ne: true };
+    }
 
     if (search && search.trim()) {
       const searchRegex = new RegExp(search.trim(), "i");
-      query = {
-        $or: [
-          { fullName: searchRegex },
-          { jobNo: searchRegex },
-          { phone: searchRegex },
-          { alternatePhone: searchRegex },
-          { companyName: searchRegex },
-        ],
-      };
+      query.$and = [
+        query.isArchived !== undefined ? { isArchived: query.isArchived } : {},
+        {
+          $or: [
+            { fullName: searchRegex },
+            { jobNo: searchRegex },
+            { archivedJobNo: searchRegex },
+            { phone: searchRegex },
+            { alternatePhone: searchRegex },
+            { companyName: searchRegex },
+          ],
+        },
+      ];
+      delete query.isArchived;
     }
 
-    const customers = await Customer.find(query);
+    const customers = await Customer.find(query).sort({ jobNo: 1, createdAt: -1 });
 
     res.status(200).json(customers);
-
   } catch (error) {
     res.status(500).json({
       message: error.message,
     });
   }
 };
-
 
 // Get Single Customer
 export const getCustomer = async (req, res) => {
@@ -87,7 +113,6 @@ export const getCustomer = async (req, res) => {
     }
 
     res.status(200).json(customer);
-
   } catch (error) {
     res.status(500).json({
       message: error.message,
@@ -95,13 +120,51 @@ export const getCustomer = async (req, res) => {
   }
 };
 
-
 // Update Customer
 export const updateCustomer = async (req, res) => {
   try {
+    const customerId = req.params.id;
+    const existingCustomer = await Customer.findById(customerId);
+
+    if (!existingCustomer) {
+      return res.status(404).json({ message: "Customer Not Found" });
+    }
+
+    const updateData = { ...req.body };
+
+    // Handle Job Number change if explicitly supplied and different
+    if (
+      updateData.jobNo &&
+      updateData.jobNo.trim() &&
+      updateData.jobNo.trim().toUpperCase() !== (existingCustomer.jobNo || "").toUpperCase()
+    ) {
+      const newJobNo = updateData.jobNo.trim().toUpperCase();
+
+      // Allocate new job number
+      await manualAllocateJobNo(
+        newJobNo,
+        customerId,
+        updateData.fullName || existingCustomer.fullName
+      );
+
+      // Release old job number if existed
+      if (existingCustomer.jobNo) {
+        await releaseJobNo(
+          existingCustomer.jobNo,
+          customerId,
+          `Customer updated Job Number to ${newJobNo}`
+        );
+      }
+
+      updateData.jobNo = newJobNo;
+    } else if (updateData.jobNo === undefined) {
+      // Do not change existing Job Number if not provided
+      updateData.jobNo = existingCustomer.jobNo;
+    }
+
     const updatedCustomer = await Customer.findByIdAndUpdate(
-      req.params.id,
-      req.body,
+      customerId,
+      updateData,
       { returnDocument: "after" }
     );
 
@@ -109,7 +172,6 @@ export const updateCustomer = async (req, res) => {
       message: "Customer Updated",
       customer: updatedCustomer,
     });
-
   } catch (error) {
     res.status(500).json({
       message: error.message,
@@ -117,16 +179,81 @@ export const updateCustomer = async (req, res) => {
   }
 };
 
-
-// Delete Customer
+// Delete / Archive Customer (Soft deletion releasing Job Number for reuse)
 export const deleteCustomer = async (req, res) => {
   try {
-    await Customer.findByIdAndDelete(req.params.id);
+    const customerId = req.params.id;
+    const customer = await Customer.findById(customerId);
+
+    if (!customer) {
+      return res.status(404).json({ message: "Customer Not Found" });
+    }
+
+    const releasedJobNo = customer.jobNo;
+
+    // Release the Job Number if present
+    if (releasedJobNo) {
+      await releaseJobNo(
+        releasedJobNo,
+        customerId,
+        "Customer archived via delete action"
+      );
+    }
+
+    // Soft-archive customer record
+    customer.isArchived = true;
+    customer.archivedAt = new Date();
+    customer.archivedJobNo = releasedJobNo || customer.archivedJobNo || "";
+    customer.status = "inactive";
+    customer.jobNo = undefined; // release active association
+
+    await customer.save();
 
     res.status(200).json({
-      message: "Customer Deleted",
+      message: `Customer archived successfully. Job Number ${releasedJobNo || "N/A"} released for reuse.`,
+      releasedJobNo,
+      customer,
     });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message,
+    });
+  }
+};
 
+// Restore Customer
+export const restoreCustomer = async (req, res) => {
+  try {
+    const customerId = req.params.id;
+    const customer = await Customer.findById(customerId);
+
+    if (!customer) {
+      return res.status(404).json({ message: "Customer Not Found" });
+    }
+
+    if (!customer.isArchived) {
+      return res.status(400).json({ message: "Customer is already active." });
+    }
+
+    const restoreResult = await restoreJobNo(
+      customer.archivedJobNo,
+      customerId,
+      customer.fullName,
+      getPrefixFromName(customer.fullName)
+    );
+
+    customer.isArchived = false;
+    customer.archivedAt = undefined;
+    customer.status = "active";
+    customer.jobNo = restoreResult.jobNo;
+
+    await customer.save();
+
+    res.status(200).json({
+      message: restoreResult.message,
+      restoredOriginal: restoreResult.restoredOriginal,
+      customer,
+    });
   } catch (error) {
     res.status(500).json({
       message: error.message,

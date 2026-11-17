@@ -3,7 +3,7 @@ import Invoice from "../model/invoiceModel.js";
 import Customer from "../model/customerModel.js";
 import Service from "../model/serviceModel.js";
 import CompanySetting from "../model/companySettingModel.js";
-import { generateInvoiceDocx } from "../utils/docGenerator.js";
+import { generateInvoiceDocx, normalizeDate, normalizeBillingPeriod } from "../utils/docGenerator.js";
 import { convertDocxToPdf } from "../utils/docxToPdf.js";
 import { generateDocumentNumber } from "../utils/documentNumberService.js";
 
@@ -273,10 +273,22 @@ export const createInvoice = async (req, res) => {
 
           dueDate,
 
-          billingPeriod,
+          billingPeriod: normalizeBillingPeriod(billingPeriod, new Date()),
           contractPeriod,
 
           customer: customer._id,
+
+          customerSnapshot: {
+            jobNo: customer.jobNo || customer.archivedJobNo || "",
+            fullName: customer.fullName || "",
+            companyName: customer.companyName || "",
+            address: customer.address || "",
+            phone: customer.phone || "",
+            email: customer.email || "",
+            gstNumber: customer.gstNumber || "",
+            contactPerson: customer.contactPerson || "",
+            snapshotTakenAt: new Date(),
+          },
 
           services: serviceDocs.map((service) => service._id),
 
@@ -467,6 +479,17 @@ export const updateInvoice = async (req, res) => {
             "This invoice number already exists. Please enter a different invoice number.",
         });
       }
+    }
+
+    if (updateData.invoiceDate !== undefined) {
+      const normalizedInvDate = normalizeDate(updateData.invoiceDate);
+      if (normalizedInvDate) updateData.invoiceDate = normalizedInvDate;
+    }
+    if (updateData.billingPeriod !== undefined) {
+      updateData.billingPeriod = normalizeBillingPeriod(
+        updateData.billingPeriod,
+        updateData.invoiceDate
+      );
     }
 
     // Optional enum fields must be omitted when the form has no selection.
@@ -686,6 +709,14 @@ export const generateInvoiceDocxFile = async (req, res) => {
 
     const result = await generateInvoiceDocx(invoice);
 
+    if (result.isPdfDirect) {
+      const fileName = `${invoice.invoiceNumber}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.setHeader("Content-Length", result.buffer.length);
+      return res.send(result.buffer);
+    }
+
     const fileName = `${invoice.invoiceNumber}.docx`;
 
     res.setHeader(
@@ -699,7 +730,7 @@ export const generateInvoiceDocxFile = async (req, res) => {
   } catch (error) {
     console.error("Generate invoice DOCX error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });
@@ -723,7 +754,9 @@ export const generateInvoicePdf = async (req, res) => {
     }
 
     const docxResult = await generateInvoiceDocx(invoice);
-    const pdfBuffer = await convertDocxToPdf(docxResult.buffer);
+    const pdfBuffer = docxResult.isPdfDirect
+      ? docxResult.buffer
+      : await convertDocxToPdf(docxResult.buffer);
 
     const fileName = `${invoice.invoiceNumber}.pdf`;
 
@@ -735,7 +768,7 @@ export const generateInvoicePdf = async (req, res) => {
   } catch (error) {
     console.error("Generate invoice PDF error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });

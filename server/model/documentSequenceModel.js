@@ -7,6 +7,8 @@ const documentSequenceSchema = new mongoose.Schema(
       required: true,
       enum: [
         "INVOICE",
+        "GST_INVOICE",
+        "NON_GST_INVOICE",
         "PC_QUOTATION",
         "ATT_QUOTATION",
         "CONTRACT_RENEWAL",

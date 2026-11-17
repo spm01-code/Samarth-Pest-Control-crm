@@ -103,3 +103,20 @@ export const getServiceDocxUrl = (id, token) => {
 export const getServicePdfUrl = (id, token) => {
   return `${API_URL}/${id}/pdf?token=${encodeURIComponent(token || "")}`;
 };
+
+// Record Payment for Service
+export const recordServicePaymentAPI = async (id, paymentData, token) => {
+  const response = await fetch(`${API_URL}/${id}/payment`, {
+    method: "POST",
+    headers: getHeaders(token),
+    body: JSON.stringify(paymentData),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to record payment");
+  }
+
+  return data;
+};

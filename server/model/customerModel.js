@@ -65,6 +65,29 @@ const customerSchema = new mongoose.Schema(
       enum: ["active", "inactive"],
       default: "active",
     },
+
+    isArchived: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    archivedJobNo: {
+      type: String,
+      trim: true,
+    },
+
+    archivedAt: {
+      type: Date,
+    },
+
+    importMeta: {
+      batchId: { type: String, index: true },
+      sourceSheet: { type: String, trim: true },
+      sourceRows: [{ type: Number }],
+      sourceJobNo: { type: String, trim: true },
+      importedAt: { type: Date },
+    },
   },
   {
     timestamps: true,

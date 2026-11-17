@@ -22,7 +22,20 @@ const quotationSchema = new mongoose.Schema(
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
-      required: true,
+      required: false,
+    },
+
+    customerSnapshot: {
+      jobNo: { type: String, trim: true },
+      fullName: { type: String, trim: true },
+      companyName: { type: String, trim: true },
+      customerName: { type: String, trim: true },
+      address: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      email: { type: String, trim: true },
+      gstNumber: { type: String, trim: true },
+      contactPerson: { type: String, trim: true },
+      snapshotTakenAt: { type: Date, default: Date.now },
     },
 
     premises: {
@@ -114,6 +127,13 @@ const quotationSchema = new mongoose.Schema(
       type: String,
       enum: ["Draft", "Sent", "Accepted", "Rejected"],
       default: "Draft",
+    },
+
+    importMeta: {
+      batchId: { type: String, index: true },
+      sourceJobNo: { type: String, trim: true },
+      sourceRows: [{ type: Number }],
+      importedAt: { type: Date },
     },
   },
   {

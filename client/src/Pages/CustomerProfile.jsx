@@ -15,6 +15,7 @@ import {
   fetchCustomerById,
   removeCustomer,
 } from "../slices/customerSlice";
+import { restoreCustomer } from "../API/customerAPI";
 import { fetchServices } from "../slices/serviceSlice";
 import { fetchInvoices } from "../slices/invoiceSlice";
 import { fetchEmployees } from "../slices/employeeSlice";
@@ -45,6 +46,7 @@ function CustomerProfile() {
   const [showQuotationModal, setShowQuotationModal] = useState(false);
   const [quotationType, setQuotationType] = useState("PC");
 
+  const token = useSelector((state) => state.auth.token);
   const { selectedCustomer, loading } = useSelector((state) => state.customer);
   const servicesState = useSelector((state) => state.services);
   const invoiceState = useSelector((state) => state.invoice);
@@ -109,8 +111,11 @@ function CustomerProfile() {
   };
 
   const handleDelete = async () => {
+    const jobMsg = selectedCustomer.jobNo
+      ? `\n\nDeleting this customer will archive their record and release Job Number "${selectedCustomer.jobNo}" back to the pool for reuse by new customers.`
+      : "";
     const confirmDelete = window.confirm(
-      "Are you sure you want to delete this customer?",
+      `Are you sure you want to delete and archive this customer?${jobMsg}`
     );
 
     if (!confirmDelete) return;
@@ -120,7 +125,7 @@ function CustomerProfile() {
 
       if (removeCustomer.fulfilled.match(result)) {
         navigate("/");
-        toast.success("Customer deleted successfully.");
+        toast.success("Customer archived and Job Number released successfully.");
       } else {
         toast.error(
           getErrorMessage(
@@ -136,6 +141,16 @@ function CustomerProfile() {
           "Failed to delete customer. Please try again."
         )
       );
+    }
+  };
+
+  const handleRestore = async () => {
+    try {
+      const res = await restoreCustomer(selectedCustomer._id, token);
+      toast.success(res.message || "Customer restored successfully.");
+      dispatch(fetchCustomerById(id));
+    } catch (err) {
+      toast.error(err.message || "Failed to restore customer");
     }
   };
 
@@ -176,42 +191,73 @@ function CustomerProfile() {
                 {selectedCustomer.fullName}
               </h1>
 
-              <p className="text-slate-600 mt-1 font-semibold text-lg">
-                Job No: {selectedCustomer.jobNo || selectedCustomer._id}
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-slate-600 font-semibold text-lg">Job No:</span>
+                <span className="font-mono font-bold text-lg text-cyan-700 bg-cyan-50 px-2.5 py-0.5 rounded-lg border border-cyan-200">
+                  {selectedCustomer.jobNo || selectedCustomer.archivedJobNo || "—"}
+                </span>
+                {selectedCustomer.isArchived && (
+                  <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                    ARCHIVED (Slot Released)
+                  </span>
+                )}
+              </div>
 
               <p className="text-gray-700 mt-1">
-                {selectedCustomer.phone}
+                {selectedCustomer.phone || selectedCustomer.alternatePhone || "No phone registered"}
               </p>
 
               <span
                 className={`inline-block mt-3 px-3 py-1 rounded-full text-sm capitalize ${
-                  selectedCustomer.status === "active"
+                  selectedCustomer.isArchived
+                    ? "bg-amber-100 text-amber-700"
+                    : selectedCustomer.status === "active"
                     ? "bg-green-100 text-green-700"
                     : "bg-red-100 text-red-700"
                 }`}
               >
-                {selectedCustomer.status}
+                {selectedCustomer.isArchived ? "Archived" : selectedCustomer.status}
               </span>
             </div>
           </div>
 
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowEditModal(true)}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-            >
-              Edit
-            </button>
+          <div className="flex gap-3 items-center">
+            {!selectedCustomer.isArchived ? (
+              <>
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 cursor-pointer"
+                >
+                  Edit
+                </button>
 
-            <button
-              onClick={handleDelete}
-              className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700"
-            >
-              Delete
-            </button>
+                <button
+                  onClick={handleDelete}
+                  className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 cursor-pointer"
+                >
+                  Archive Customer
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleRestore}
+                className="bg-emerald-600 text-white px-6 py-2.5 rounded-lg hover:bg-emerald-700 font-bold shadow-md cursor-pointer flex items-center gap-2"
+              >
+                Restore Customer
+              </button>
+            )}
           </div>
         </div>
+
+        {selectedCustomer.isArchived && (
+          <div className="mt-6 bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-center justify-between text-amber-900 text-xs font-medium">
+            <span>
+              ⚠️ <strong>Customer is currently archived:</strong> Their previous Job Number (
+              <strong className="font-mono">{selectedCustomer.archivedJobNo || selectedCustomer.jobNo}</strong>) was
+              released for reuse. Clicking <strong>Restore Customer</strong> will reclaim the original number if still available, or automatically allocate the smallest available number in their prefix.
+            </span>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-3 mt-8 border-b">
           <button

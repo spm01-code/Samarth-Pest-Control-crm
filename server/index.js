@@ -1,4 +1,9 @@
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, ".env") });
 dotenv.config();
 import dns from "dns";
 if (dns.setDefaultResultOrder) {
@@ -20,6 +25,7 @@ import authMiddleware from "./middleware/authMiddleware.js";
 import templateRoutes from "./routes/templateRoute.js";
 import companySettingRoutes from "./routes/companySettingRoute.js";
 import importRoutes from "./routes/importRoute.js";
+import jobNumberRoutes from "./routes/jobNumberRoute.js";
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -68,6 +74,16 @@ mongoose
       const { syncExistingDocumentSequences } = await import(
         "./utils/documentNumberService.js"
       );
+      const { migrateDatabaseIndexes } = await import(
+        "./utils/dbIndexMigration.js"
+      );
+      const { syncJobNumberSequences } = await import(
+        "./utils/jobNumberService.js"
+      );
+
+      await migrateDatabaseIndexes(mongoose.connection.db);
+      await syncJobNumberSequences();
+
       const [Invoice, Quotation, Renewal, Service] = await Promise.all([
         import("./model/invoiceModel.js").then((m) => m.default),
         import("./model/quotationModel.js").then((m) => m.default),
@@ -109,6 +125,7 @@ app.use("/api/renewals", authMiddleware, renewalRoutes);
 app.use("/api/templates", templateRoutes);
 app.use("/api/company-settings", companySettingRoutes);
 app.use("/api/import", importRoutes);
+app.use("/api/job-numbers", authMiddleware, jobNumberRoutes);
 
 // Server
 app.listen(PORT, (req, res) => {

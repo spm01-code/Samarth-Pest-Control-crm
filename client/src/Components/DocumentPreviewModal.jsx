@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useScrollLock } from "../hooks/useScrollLock";
 
 /**
  * DocumentPreviewModal
@@ -32,52 +33,20 @@ function DocumentPreviewModal({
   const [error, setError] = useState(null);
   const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
 
+  useScrollLock(isOpen);
+
   useEffect(() => {
     if (!isOpen) return;
 
-    // 1. Capture current scroll position
-    const scrollY =
-      window.scrollY || window.pageYOffset || document.documentElement.scrollTop || 0;
-    const scrollX =
-      window.scrollX || window.pageXOffset || document.documentElement.scrollLeft || 0;
-
-    // 2. Measure scrollbar width to prevent horizontal layout shift
-    const scrollbarWidth =
-      window.innerWidth - document.documentElement.clientWidth;
-
-    // 3. Save original inline styles
-    const prevBodyOverflow = document.body.style.overflow;
-    const prevHtmlOverflow = document.documentElement.style.overflow;
-    const prevBodyPaddingRight = document.body.style.paddingRight;
-    const prevScrollBehavior = document.documentElement.style.scrollBehavior;
-
-    // 4. Lock background page scroll
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    }
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-
-    // 5. Close on Escape key press
+    // Close on Escape key press
     const handleKeyDown = (e) => {
       if (e.key === "Escape") {
         onCloseRef.current?.();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
-
-    // 6. Cleanup function to restore original scrolling state
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-
-      document.body.style.overflow = prevBodyOverflow;
-      document.documentElement.style.overflow = prevHtmlOverflow;
-      document.body.style.paddingRight = prevBodyPaddingRight;
-
-      // Restore scroll position instantly without triggering smooth scrolling
-      document.documentElement.style.scrollBehavior = "auto";
-      window.scrollTo(scrollX, scrollY);
-      document.documentElement.style.scrollBehavior = prevScrollBehavior;
     };
   }, [isOpen]);
 
@@ -93,7 +62,8 @@ function DocumentPreviewModal({
       fetch(iframeSrc)
         .then(async (response) => {
           if (!response.ok) {
-            throw new Error(`HTTP error ${response.status}`);
+            const errBody = await response.json().catch(() => null);
+            throw new Error(errBody?.message || `HTTP error ${response.status}`);
           }
           return response.blob();
         })
@@ -107,7 +77,7 @@ function DocumentPreviewModal({
         .catch((err) => {
           if (!isMounted) return;
           console.error("PDF preview fetch error:", err);
-          setError("Unable to load PDF preview. Please try again.");
+          setError(err?.message || "Unable to load PDF preview. Please try again.");
           setIsLoading(false);
         });
     } else {
@@ -156,7 +126,7 @@ function DocumentPreviewModal({
       role="dialog"
       aria-modal="true"
       aria-label={typeof title === "string" ? title : "Document Preview"}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[1px] p-2 sm:p-4 overscroll-contain"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[1px] p-2 sm:p-4 overflow-y-auto overscroll-contain animate-in fade-in duration-200"
       onClick={(e) => {
         // Close if clicking directly on the backdrop outside the dialog
         if (e.target === e.currentTarget) {
@@ -165,7 +135,7 @@ function DocumentPreviewModal({
       }}
     >
       <div
-        className="flex flex-col w-full max-w-5xl h-[92vh] bg-white rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden"
+        className="flex flex-col w-full max-w-5xl h-[92vh] bg-white rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}

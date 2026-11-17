@@ -111,3 +111,26 @@ export const deleteCustomer = async (id, token) => {
 
   return result;
 };
+
+// RESTORE CUSTOMER
+export const restoreCustomer = async (id, token) => {
+  if (!token) {
+    throw new Error("Please login to restore customers");
+  }
+
+  const res = await fetch(`${BASE_URL}/customers/${id}/restore`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const result = await res.json();
+
+  if (!res.ok) {
+    throw new Error(result.message || "Failed to restore customer");
+  }
+
+  return result;
+};

@@ -9,8 +9,50 @@ import Renewal from "../model/renewalModel.js";
 import Invoice from "../model/invoiceModel.js";
 import Quotation from "../model/quotationModel.js";
 import ImportSession from "../model/importSessionModel.js";
+import JobNumber from "../model/jobNumberModel.js";
+import JobNumberSequence from "../model/jobNumberSequenceModel.js";
+import ImportAuditLog from "../model/importAuditLogModel.js";
 import { calculateServiceDates } from "../utils/serviceDateCalculator.js";
 import { classifyWorksheet, resolveTargetCrmEntity } from "../utils/importClassifier.js";
+import { parseJobNo, syncJobNumberSequences } from "../utils/jobNumberService.js";
+import { createDatabaseBackup, verifyBackupIntegrity } from "../utils/dbBackupService.js";
+import {
+  evaluateCellNumeric,
+  parseExcelPaymentDate,
+  normalizePaymentMode,
+  extractContractPayments,
+} from "../utils/excelFormulaReader.js";
+import { normalizeDate, normalizeBillingPeriod } from "../utils/docGenerator.js";
+
+// Helper: Normalize Frequency string into standard CRM frequency + contract metadata
+export const normalizeFrequency = (freqStr) => {
+  if (!freqStr) return { validFreq: "one-time", rawFrequency: "", frequencyType: "one-time", contractVisitCount: 1 };
+  const raw = String(freqStr).trim();
+  const s = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  if (s.includes("3service") || s.includes("3serv") || s.includes("threeservice") || s.includes("03service")) {
+    return { validFreq: "Yearly 3 services", rawFrequency: raw, frequencyType: "recurring", contractVisitCount: 3 };
+  }
+  if (s.includes("twiceaweek") || s.includes("twiceinweek")) {
+    return { validFreq: "twice a week", rawFrequency: raw, frequencyType: "recurring", contractVisitCount: 104 };
+  }
+  if (s.includes("week") && !s.includes("twice")) {
+    return { validFreq: "weekly", rawFrequency: raw, frequencyType: "recurring", contractVisitCount: 52 };
+  }
+  if (s.includes("fourthnight") || s.includes("fortnight") || s.includes("forthnight") || s.includes("15day")) {
+    return { validFreq: "Fourth nightly", rawFrequency: raw, frequencyType: "recurring", contractVisitCount: 24 };
+  }
+  if (s.includes("quarter") || s.includes("qtr") || s.includes("quater")) {
+    return { validFreq: "Quarterly", rawFrequency: raw, frequencyType: "recurring", contractVisitCount: 4 };
+  }
+  if (s.includes("month")) {
+    return { validFreq: "monthly", rawFrequency: raw, frequencyType: "recurring", contractVisitCount: 12 };
+  }
+  if (s.includes("year") || s.includes("annum") || s.includes("annual")) {
+    return { validFreq: "Yearly 3 services", rawFrequency: raw, frequencyType: "recurring", contractVisitCount: 3 };
+  }
+  return { validFreq: "one-time", rawFrequency: raw, frequencyType: "one-time", contractVisitCount: 1 };
+};
 
 // Helper: Normalize String for Matching
 const normalizeStr = (str) => {
@@ -138,64 +180,7 @@ export const findMatchingCustomer = (candidateName, candidatePhone, candidateGst
 
 // Helper: Parse Date Safely (including MMM--YY, Excel serials, DD/MM/YYYY)
 export const parseExcelDate = (val) => {
-  if (!val) return null;
-  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
-  if (typeof val === "number") {
-    // Excel serial number
-    const date = new Date(Math.round((val - 25569) * 86400 * 1000));
-    return isNaN(date.getTime()) ? null : date;
-  }
-  if (typeof val === "string") {
-    const s = val.trim();
-    if (!s) return null;
-
-    // Check if string is numeric Excel serial date e.g. "46061"
-    if (/^\d+(\.\d+)?$/.test(s)) {
-      const num = parseFloat(s);
-      if (num > 10000 && num < 100000) {
-        const date = new Date(Math.round((num - 25569) * 86400 * 1000));
-        if (!isNaN(date.getTime())) return date;
-      }
-    }
-
-    // Check for Month-Year format like "SEP--26", "AUG--25", "OCT--26", "JAN--27", "FEB-26", "JUL--26"
-    const monthYearMatch = s.match(/^([a-zA-Z]{3,})[\s\-]+(\d{2,4})$/);
-    if (monthYearMatch) {
-      const monthStr = monthYearMatch[1].toUpperCase();
-      const yearVal = parseInt(monthYearMatch[2], 10);
-      const fullYear = yearVal < 100 ? 2000 + yearVal : yearVal;
-      const monthMap = {
-        JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
-        JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11
-      };
-      const monthIdx = monthMap[monthStr.substring(0, 3)];
-      if (monthIdx !== undefined) {
-        // Contract expiry / renewal date: use the last day of that month in UTC
-        const lastDay = new Date(Date.UTC(fullYear, monthIdx + 1, 0)).getUTCDate();
-        return new Date(Date.UTC(fullYear, monthIdx, lastDay));
-      }
-    }
-
-    // Try DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
-    const parts = s.split(/[\/\-\.]/);
-    if (parts.length === 3 && parts.every((p) => /^\d+$/.test(p.trim()))) {
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const year = parseInt(parts[2], 10);
-      const fullYear = year < 100 ? 2000 + year : year;
-      if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
-        const d = new Date(Date.UTC(fullYear, month, day));
-        if (!isNaN(d.getTime())) return d;
-      }
-    }
-
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) {
-      const y = d.getFullYear();
-      if (y >= 1970 && y <= 2100) return d;
-    }
-  }
-  return null;
+  return normalizeDate(val);
 };
 
 // Helper: Parse Excel Time Safely (converts decimal day fractions e.g. 0.708333 to "05:00 PM")
@@ -531,10 +516,60 @@ const ENTITY_FIELDS = {
     { key: "notes", label: "Notes / Remarks", required: false },
     { key: "email", label: "Email Address", required: false },
   ],
+  AMC_Master: [
+    { key: "jobNo", label: "Job Number", required: true },
+    { key: "fullName", label: "Client Name / Party Name", required: true },
+    { key: "address", label: "Address", required: false },
+    { key: "location", label: "Location", required: false },
+    { key: "contactPerson", label: "Contact Person", required: false },
+    { key: "phone", label: "Contact No. / Phone", required: false },
+    { key: "serviceName", label: "Type of Service", required: true },
+    { key: "area", label: "Premises Area", required: false },
+    { key: "frequency", label: "Frequency", required: false },
+    { key: "charges", label: "Contract Charges", required: false },
+    { key: "firstService", label: "1st Service Date", required: false },
+    { key: "secondService", label: "2nd Service Date", required: false },
+    { key: "thirdService", label: "3rd Service Date", required: false },
+    { key: "fourthService", label: "4th Service Date", required: false },
+    { key: "contractEndDate", label: "Contract End Date (EXP)", required: false },
+    { key: "billingTerms", label: "Billing Terms", required: false },
+  ],
 };
 
 // Preset Header Mapping Rules for Known Client Formats
 const PRESET_MAPPINGS = {
+  AMC_Master: {
+    "JOB NO": "jobNo",
+    "JOB NO.": "jobNo",
+    "CLIENT NAME": "fullName",
+    "PARTY NAME": "fullName",
+    "CLIENT NAME & ADDRESS": "fullName",
+    ADDRESS: "address",
+    LOCATION: "location",
+    "CONTACT PERSON": "contactPerson",
+    PERSON: "contactPerson",
+    "MOB NO": "phone",
+    "MOB. NO.": "phone",
+    "MOBILE NO": "phone",
+    "CONTACT NO.": "phone",
+    "CONTACT NO": "phone",
+    PHONE: "phone",
+    SERVICE: "serviceName",
+    "TYPE OF SERVICES": "serviceName",
+    "TYPE OF SERVICE": "serviceName",
+    SERVICES: "serviceName",
+    AREA: "area",
+    FREQUENCY: "frequency",
+    CHARGES: "charges",
+    "CONTRACT CHARGES": "charges",
+    "1ST SERVICE": "firstService",
+    "2ND SERVICE": "secondService",
+    "3RD SERVICE": "thirdService",
+    "4TH SERVICE": "fourthService",
+    EXP: "contractEndDate",
+    "BILLING TERMS": "billingTerms",
+    "BILLING TERM": "billingTerms",
+  },
   Customer: {
     "CLIENT NAME": "fullName",
     "PARTY NAME": "fullName",
@@ -603,7 +638,13 @@ const PRESET_MAPPINGS = {
     AREA: "area",
   },
   Invoice: {
+    DATE: "invoiceDate",
+    " DATE": "invoiceDate",
+    "INV DATE": "invoiceDate",
+    "INV. DATE": "invoiceDate",
+    "BILL DATE": "invoiceDate",
     "INVOICE DATE": "invoiceDate",
+    "INVOICE_DATE": "invoiceDate",
     "INVOICE NO": "invoiceNumber",
     "INVOICE NUMBER": "invoiceNumber",
     "INVOICE  NO": "invoiceNumber",
@@ -782,29 +823,39 @@ export const selectSheet = async (req, res) => {
 
     // Auto-detect Target Entity Type based on classification or headers
     let detectedEntity = "Customer";
-    const resolvedFromProfile = sheetClassification ? resolveTargetCrmEntity(sheetClassification.sourceProfile) : null;
-    const profileEntity = typeof resolvedFromProfile === "object" && resolvedFromProfile !== null ? resolvedFromProfile.crmEntity : resolvedFromProfile;
+    const upperHeaders = headers.map((h) => h.toUpperCase());
+    const isAmcMaster =
+      (targetSheetName && targetSheetName.toUpperCase().includes("AMC")) ||
+      (upperHeaders.includes("JOB NO") &&
+        (upperHeaders.includes("1ST SERVICE") || upperHeaders.includes("FIRST SERVICE")) &&
+        (upperHeaders.includes("CLIENT NAME") || upperHeaders.includes("CLIENT NAME & ADDRESS")));
 
-    if (profileEntity && profileEntity !== "OUT_OF_SCOPE") {
-      detectedEntity = profileEntity;
+    if (isAmcMaster) {
+      detectedEntity = "AMC_Master";
     } else {
-      const upperHeaders = headers.map((h) => h.toUpperCase());
-      if (upperHeaders.includes("JOB NO") && upperHeaders.includes("TYPE OF SERVICE")) {
-        detectedEntity = "Service";
-      } else if (upperHeaders.includes("CONTRACT NO") || upperHeaders.includes("1ST SERVICE") || upperHeaders.includes("CON N0")) {
-        detectedEntity = "Renewal";
-      } else if (
-        upperHeaders.includes("INVOICE NO") ||
-        upperHeaders.includes("INVOICE NUMBER") ||
-        upperHeaders.includes("INVOICE DATE") ||
-        upperHeaders.includes("BII NO") ||
-        upperHeaders.includes("BILL NO")
-      ) {
-        detectedEntity = "Invoice";
-      } else if (upperHeaders.includes("QTN NO") || upperHeaders.includes("PREMISE TO BE TREATED")) {
-        detectedEntity = "Quotation";
-      } else if (upperHeaders.includes("ROLE") && upperHeaders.includes("SALARY")) {
-        detectedEntity = "Employee";
+      const resolvedFromProfile = sheetClassification ? resolveTargetCrmEntity(sheetClassification.sourceProfile) : null;
+      const profileEntity = typeof resolvedFromProfile === "object" && resolvedFromProfile !== null ? resolvedFromProfile.crmEntity : resolvedFromProfile;
+
+      if (profileEntity && profileEntity !== "OUT_OF_SCOPE") {
+        detectedEntity = profileEntity;
+      } else {
+        if (upperHeaders.includes("JOB NO") && upperHeaders.includes("TYPE OF SERVICE")) {
+          detectedEntity = "Service";
+        } else if (upperHeaders.includes("CONTRACT NO") || upperHeaders.includes("1ST SERVICE") || upperHeaders.includes("CON N0")) {
+          detectedEntity = "Renewal";
+        } else if (
+          upperHeaders.includes("INVOICE NO") ||
+          upperHeaders.includes("INVOICE NUMBER") ||
+          upperHeaders.includes("INVOICE DATE") ||
+          upperHeaders.includes("BII NO") ||
+          upperHeaders.includes("BILL NO")
+        ) {
+          detectedEntity = "Invoice";
+        } else if (upperHeaders.includes("QTN NO") || upperHeaders.includes("PREMISE TO BE TREATED")) {
+          detectedEntity = "Quotation";
+        } else if (upperHeaders.includes("ROLE") && upperHeaders.includes("SALARY")) {
+          detectedEntity = "Employee";
+        }
       }
     }
 
@@ -914,6 +965,333 @@ export const getHelpers = async (req, res) => {
 };
 
 // ============================================================
+// AMC Master Validation Handler (Multi-Row Contracts & Job Number Engine)
+// ============================================================
+export const validateAmcMasterSession = async ({
+  req,
+  res,
+  session,
+  workbook,
+  sheetName,
+  rawRows,
+  headerRowIndex,
+  headers,
+  mappings,
+}) => {
+  const dataRows = rawRows.slice(headerRowIndex + 1);
+
+  // Load existing customers for matching & disambiguation
+  const existingCustomers = await Customer.find().lean();
+  const existingPhoneMap = new Map();
+  const existingNameMap = new Map();
+
+  existingCustomers.forEach((c) => {
+    if (c.phone) existingPhoneMap.set(normalizeStr(c.phone), c);
+    if (c.fullName) existingNameMap.set(normalizeStr(c.fullName), c);
+  });
+
+  const alphabetSectionRows = [];
+  const vacantSlots = [];
+  const occupiedRows = [];
+  let p09Conflict = null;
+
+  dataRows.forEach((r, idx) => {
+    const rowNum = headerRowIndex + 2 + idx;
+    const jobNo = String(r[0] || "").trim().toUpperCase();
+    const clientName = String(r[1] || "").trim();
+    const service = String(r[6] || "").trim();
+
+    if (!jobNo) return;
+
+    // 1. Alphabet section header: single letter A-Z with no client and no service
+    if (/^[A-Z]$/.test(jobNo) && !clientName && !service) {
+      alphabetSectionRows.push({ rowNumber: rowNum, letter: jobNo });
+      return;
+    }
+
+    const isBlankClient = !clientName || clientName === "null" || clientName === "-";
+    const isBlankService = !service || service === "null" || service === "-";
+
+    // 2. Vacant slot candidate
+    if (isBlankClient && isBlankService) {
+      if (jobNo === "P/09") {
+        p09Conflict = {
+          jobNo: "P/09",
+          rowNumber: rowNum,
+          type: "CONFLICT_SLOT",
+          reason: "Occupied in rows 189/190 by PAWAR PATKAR CONST, but row 193 has no client. Occupied record is preserved.",
+        };
+      } else {
+        vacantSlots.push({
+          jobNo,
+          rowNumber: rowNum,
+          parsed: parseJobNo(jobNo),
+        });
+      }
+    } else {
+      occupiedRows.push({
+        rowNumber: rowNum,
+        rawIdx: idx,
+        fullRow: r,
+        jobNo,
+        clientName,
+        address: String(r[2] || "").trim(),
+        location: String(r[3] || "").trim(),
+        contactPerson: String(r[4] || "").trim(),
+        phone: String(r[5] || "").trim(),
+        serviceName: service,
+        area: String(r[7] || "").trim(),
+        frequency: String(r[9] || "").trim(),
+        charges: evaluateCellNumeric(r[10]),
+        firstService: r[27],
+        secondService: r[28],
+        thirdService: r[29],
+        fourthService: r[30],
+        contractEndDate: r[31],
+        billingTerms: String(r[32] || "").trim(),
+      });
+    }
+  });
+
+  // Group occupied rows by jobNo
+  const groupedContracts = new Map();
+  occupiedRows.forEach((row) => {
+    if (!groupedContracts.has(row.jobNo)) {
+      groupedContracts.set(row.jobNo, []);
+    }
+    groupedContracts.get(row.jobNo).push(row);
+  });
+
+  const fieldConflicts = [];
+  const contractsList = [];
+  const uniqueNamesSet = new Set();
+  let totalPaymentsCount = 0;
+  let ambiguousMatchesCount = 0;
+
+  for (const [jobNo, rows] of groupedContracts.entries()) {
+    const rawFullName = rows[0].clientName;
+    const primaryName = extractPrimaryName(rawFullName);
+    uniqueNamesSet.add(normalizeStr(rawFullName));
+
+    // Multi-row field inconsistencies
+    const phones = Array.from(new Set(rows.map((r) => r.phone).filter(Boolean)));
+    const contacts = Array.from(new Set(rows.map((r) => r.contactPerson).filter(Boolean)));
+    const addresses = Array.from(new Set(rows.map((r) => r.address).filter(Boolean)));
+    const billings = Array.from(new Set(rows.map((r) => r.billingTerms).filter(Boolean)));
+
+    let primaryPhone = phones[0] || "";
+    let alternatePhone = phones.length > 1 ? phones.slice(1).join(", ") : "";
+    if (phones.length > 1) {
+      fieldConflicts.push({
+        jobNo,
+        field: "phone",
+        values: phones,
+        resolvedValue: primaryPhone,
+        secondaryValue: alternatePhone,
+        resolutionStrategy: "Primary phone + alternatePhone",
+      });
+    }
+
+    let primaryContact = contacts[0] || "";
+    let alternateContact = contacts.length > 1 ? contacts.slice(1).join(" / ") : "";
+    if (contacts.length > 1) {
+      fieldConflicts.push({
+        jobNo,
+        field: "contactPerson",
+        values: contacts,
+        resolvedValue: primaryContact,
+        secondaryValue: alternateContact,
+        resolutionStrategy: "Primary contact + alternate contact notes",
+      });
+    }
+
+    let primaryAddress = addresses[0] || "";
+    let secondaryAddress = addresses.length > 1 ? addresses.slice(1).join("; ") : "";
+    if (addresses.length > 1) {
+      fieldConflicts.push({
+        jobNo,
+        field: "address",
+        values: addresses,
+        resolvedValue: primaryAddress,
+        secondaryValue: secondaryAddress,
+        resolutionStrategy: "Customer profile address + Service site address",
+      });
+    }
+
+    if (billings.length > 1) {
+      fieldConflicts.push({
+        jobNo,
+        field: "billingTerms",
+        values: billings,
+        resolvedValue: billings[0],
+        resolutionStrategy: "Per-service billing terms preserved on individual service lines",
+      });
+    }
+
+    // Extract payments with deduplication
+    const totalContractCharges = rows.reduce((sum, r) => sum + r.charges, 0);
+    const paymentResult = extractContractPayments(
+      rows.map((r) => ({ rowIdx: r.rowNumber, fullRow: r.fullRow })),
+      jobNo,
+      totalContractCharges
+    );
+    totalPaymentsCount += paymentResult.payments.length;
+
+    // Customer Matching & Ambiguity Check
+    let matchType = "NEW";
+    let matchedCustomer = null;
+    let reviewRequired = false;
+    let reviewReason = "";
+
+    const normPhone = primaryPhone ? normalizeStr(primaryPhone) : "";
+    const normName = normalizeStr(primaryName || rawFullName);
+    const existingByPhone = normPhone ? existingPhoneMap.get(normPhone) : null;
+    const existingByName = normName ? existingNameMap.get(normName) : null;
+
+    if (existingByPhone) {
+      const existingNameNorm = normalizeStr(existingByPhone.fullName);
+      if (existingNameNorm === normName || existingNameNorm.includes(normName) || normName.includes(existingNameNorm)) {
+        matchType = "CLEAN_MATCH";
+        matchedCustomer = {
+          id: existingByPhone._id.toString(),
+          fullName: existingByPhone.fullName,
+          phone: existingByPhone.phone,
+          address: existingByPhone.address,
+        };
+      } else {
+        matchType = "AMBIGUOUS_MATCH";
+        reviewRequired = true;
+        reviewReason = `Phone ${primaryPhone} matches existing customer "${existingByPhone.fullName}", but name "${rawFullName}" differs. Manual review required.`;
+        matchedCustomer = {
+          id: existingByPhone._id.toString(),
+          fullName: existingByPhone.fullName,
+          phone: existingByPhone.phone,
+          address: existingByPhone.address,
+        };
+        ambiguousMatchesCount++;
+      }
+    } else if (existingByName) {
+      const existingAddrNorm = normalizeStr(existingByName.address);
+      const candAddrNorm = normalizeStr(primaryAddress);
+      const isPlaceholderAddr = !existingByName.address || existingByName.address === "Address not provided" || existingByName.address === "N/A";
+
+      if (isPlaceholderAddr || existingAddrNorm === candAddrNorm || !primaryAddress) {
+        matchType = "CLEAN_MATCH";
+        matchedCustomer = {
+          id: existingByName._id.toString(),
+          fullName: existingByName.fullName,
+          phone: existingByName.phone,
+          address: existingByName.address,
+        };
+      } else {
+        matchType = "AMBIGUOUS_MATCH";
+        reviewRequired = true;
+        reviewReason = `Name matches existing customer "${existingByName.fullName}", but address or phone differs. Manual review required.`;
+        matchedCustomer = {
+          id: existingByName._id.toString(),
+          fullName: existingByName.fullName,
+          phone: existingByName.phone,
+          address: existingByName.address,
+        };
+        ambiguousMatchesCount++;
+      }
+    }
+
+    const services = rows.map((r) => {
+      const freqInfo = normalizeFrequency(r.frequency);
+      return {
+        rowNumber: r.rowNumber,
+        serviceName: r.serviceName || "Pest Control",
+        area: r.area,
+        frequency: freqInfo.validFreq,
+        rawFrequency: freqInfo.rawFrequency,
+        frequencyType: freqInfo.frequencyType,
+        contractVisitCount: freqInfo.contractVisitCount,
+        charges: r.charges,
+        firstService: r.firstService,
+        secondService: r.secondService,
+        thirdService: r.thirdService,
+        fourthService: r.fourthService,
+        contractEndDate: r.contractEndDate,
+        billingTerms: r.billingTerms,
+        serviceAddress: r.address || primaryAddress,
+      };
+    });
+
+    contractsList.push({
+      jobNo,
+      customer: {
+        fullName: rawFullName,
+        primaryName,
+        address: primaryAddress,
+        phone: primaryPhone,
+        alternatePhone,
+        contactPerson: primaryContact,
+        alternateContact,
+        customerType: rawFullName.toUpperCase().includes("PVT") || rawFullName.toUpperCase().includes("LTD") || rawFullName.toUpperCase().includes("LLP") ? "commercial" : "residential",
+      },
+      parsedJobNo: parseJobNo(jobNo),
+      services,
+      payments: paymentResult.payments,
+      paymentWarnings: paymentResult.warnings,
+      totalCharges: totalContractCharges,
+      totalPaid: paymentResult.totalPaid,
+      matchType,
+      matchedCustomer,
+      reviewRequired,
+      reviewReason,
+      rowNumbers: rows.map((r) => r.rowNumber),
+    });
+  }
+
+  const summary = {
+    totalRows: dataRows.length,
+    alphabetHeadersCount: alphabetSectionRows.length,
+    uniqueOccupiedJobNumbers: groupedContracts.size,
+    uniqueCustomerRecords: groupedContracts.size,
+    uniqueCustomerNames: uniqueNamesSet.size,
+    totalServiceEntries: occupiedRows.length,
+    vacantSlotsCount: vacantSlots.length,
+    fieldConflictsCount: fieldConflicts.length,
+    paymentEntriesCount: totalPaymentsCount,
+    ambiguousMatchesCount,
+    p09ConflictDetected: !!p09Conflict,
+  };
+
+  const reconciliationReport = headers.map((header, colIdx) => ({
+    colIdx,
+    header,
+    columnKey: `col_${colIdx}_${header}`,
+    targetField: mappings[`col_${colIdx}_${header}`] || PRESET_MAPPINGS.AMC_Master[header.toUpperCase()] || "UNMAPPED",
+    status: "PASS",
+  }));
+
+  session.validationResults = {
+    summary,
+    targetEntity: "AMC_Master",
+    groupedContracts: contractsList,
+    vacantSlots,
+    p09Conflict,
+    fieldConflicts,
+    alphabetSectionRows,
+    reconciliationReport,
+  };
+  session.status = "validated";
+  await session.save();
+
+  return res.status(200).json({
+    message: "AMC Master validation completed successfully",
+    summary,
+    fieldConflicts,
+    vacantSlots,
+    p09Conflict,
+    reconciliationReport,
+    groupedContracts: contractsList,
+    totalContracts: contractsList.length,
+  });
+};
+
+// ============================================================
 // 4. Validate Session Endpoint
 // ============================================================
 export const validateSession = async (req, res) => {
@@ -949,6 +1327,24 @@ export const validateSession = async (req, res) => {
     }
 
     const headers = (rawRows[headerRowIndex] || []).map((h) => String(h).trim());
+
+    const target = targetEntity || session.targetEntity;
+    const isAmc = target === "AMC_Master" || (sheetName && sheetName.toUpperCase().includes("AMC"));
+
+    if (isAmc) {
+      return await validateAmcMasterSession({
+        req,
+        res,
+        session,
+        workbook,
+        sheetName,
+        rawRows,
+        headerRowIndex,
+        headers,
+        mappings: mappings || session.mappings || {},
+      });
+    }
+
     const dataRows = rawRows.slice(headerRowIndex + 1);
 
     // Helper to resolve fieldKey for a column by columnKey, colIdx, or header
@@ -1319,15 +1715,24 @@ export const commitSession = async (req, res) => {
       return res.status(404).json({ message: "Import session not found" });
     }
 
-    if (!session.validationResults || !session.validationResults.rows) {
-      return res.status(400).json({ message: "Session must be validated before committing" });
-    }
-
     if (session.status === "committed") {
       return res.status(400).json({ message: "This import session has already been committed." });
     }
 
     const targetEntity = session.targetEntity;
+    const isAmc = targetEntity === "AMC_Master" || (session.selectedSheet && session.selectedSheet.toUpperCase().includes("AMC"));
+
+    if (isAmc) {
+      if (!session.validationResults || !session.validationResults.groupedContracts) {
+        return res.status(400).json({ message: "Session must be validated before committing" });
+      }
+      return await commitAmcMasterSession({ req, res, session, choices });
+    }
+
+    if (!session.validationResults || !session.validationResults.rows) {
+      return res.status(400).json({ message: "Session must be validated before committing" });
+    }
+
     const validatedRows = session.validationResults.rows;
     const sessionMappings = session.mappings || {};
 
@@ -1600,7 +2005,10 @@ export const commitSession = async (req, res) => {
                 invoiceDate: parseExcelDate(rowData.invoiceDate) || new Date(),
                 invoiceType,
                 customer: customerId,
-                billingPeriod: rowData.billingPeriod || "",
+                billingPeriod: normalizeBillingPeriod(
+                  rowData.billingPeriod,
+                  rowData.invoiceDate
+                ),
                 amountInWords: rowData.amountInWords || "",
                 premisesTreated: rowData.premisesTreated || "",
                 treatmentType: rowData.treatmentType || "",
@@ -1825,5 +2233,505 @@ export const commitSession = async (req, res) => {
       });
   } catch (error) {
     res.status(500).json({ message: "Commit failed: " + error.message });
+  }
+};
+
+// ============================================================
+// 6. AMC Master Commit Handler
+// ============================================================
+export const commitAmcMasterSession = async ({ req, res, session, choices }) => {
+  const validationResults = session.validationResults;
+  const groupedContracts = validationResults.groupedContracts || [];
+  const vacantSlots = validationResults.vacantSlots || [];
+
+  const choiceMap = new Map();
+  if (choices && Array.isArray(choices)) {
+    choices.forEach((c) => {
+      if (c.jobNo) choiceMap.set(c.jobNo, c);
+    });
+  }
+
+  const batchId = "BATCH-AMC-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6).toUpperCase();
+  const userId = req.admin?._id || null;
+
+  let createdCustomersCount = 0;
+  let updatedCustomersCount = 0;
+  let createdServicesCount = 0;
+  let createdRenewalsCount = 0;
+  let assignedJobNosCount = 0;
+  let vacantRegisteredCount = 0;
+  let skippedCount = 0;
+  const errorReport = [];
+
+  // 1. Process Occupied Contracts
+  for (const contract of groupedContracts) {
+    const jobNo = contract.jobNo;
+    const choice = choiceMap.get(jobNo) || {};
+    const action = choice.action || (contract.reviewRequired ? "REVIEW" : "IMPORT");
+
+    if (action === "SKIP") {
+      skippedCount++;
+      continue;
+    }
+
+    try {
+      let customerId = choice.selectedCustomerId || (contract.matchedCustomer ? contract.matchedCustomer.id : null);
+      let customerDoc = null;
+
+      if (customerId) {
+        // Link to existing customer & save before-image
+        customerDoc = await Customer.findById(customerId);
+        if (customerDoc) {
+          const beforeImg = customerDoc.toObject();
+          await ImportAuditLog.create({
+            batchId,
+            entityType: "Customer",
+            entityId: customerDoc._id,
+            action: "ENRICHED",
+            beforeImage: beforeImg,
+            executedBy: userId,
+            reason: `Linked from AMC Master import for Job No ${jobNo}`,
+          });
+
+          // Safe enrichment: enrich address if placeholder
+          if (!customerDoc.address || customerDoc.address === "Address not provided" || customerDoc.address === "N/A") {
+            customerDoc.address = contract.customer.address || "N/A";
+          }
+          if (!customerDoc.jobNo) {
+            customerDoc.jobNo = jobNo;
+          }
+          await customerDoc.save();
+          updatedCustomersCount++;
+        }
+      }
+
+      if (!customerDoc) {
+        // Create new Customer
+        const custPayload = {
+          fullName: contract.customer.primaryName || contract.customer.fullName,
+          jobNo,
+          customerType: contract.customer.customerType || "residential",
+          address: contract.customer.address || "N/A",
+          contactPerson: contract.customer.contactPerson || "",
+          alternatePhone: contract.customer.alternatePhone || "",
+          importMeta: {
+            batchId,
+            sourceSheet: session.selectedSheet,
+            sourceJobNo: jobNo,
+            sourceRows: contract.rowNumbers,
+            importedAt: new Date(),
+          },
+        };
+
+        if (contract.customer.phone) {
+          custPayload.phone = contract.customer.phone;
+        }
+
+        try {
+          customerDoc = new Customer(custPayload);
+          await customerDoc.save();
+        } catch (saveErr) {
+          // If phone collision occurred, save with alternatePhone to guarantee customer creation
+          if (saveErr.code === 11000 && saveErr.keyPattern?.phone) {
+            delete custPayload.phone;
+            custPayload.alternatePhone = contract.customer.phone;
+            customerDoc = new Customer(custPayload);
+            await customerDoc.save();
+          } else {
+            throw saveErr;
+          }
+        }
+
+        await ImportAuditLog.create({
+          batchId,
+          entityType: "Customer",
+          entityId: customerDoc._id,
+          action: "CREATED",
+          afterImage: customerDoc.toObject(),
+          executedBy: userId,
+          reason: `Created new Customer for Job No ${jobNo} from AMC Master`,
+        });
+        createdCustomersCount++;
+      }
+
+      customerId = customerDoc._id;
+
+      // Register / Assign JobNumber
+      const parsed = parseJobNo(jobNo);
+      let jn = await JobNumber.findOne({ jobNo });
+      if (!jn) {
+        jn = new JobNumber({
+          jobNo,
+          prefix: parsed.prefix,
+          sequence: parsed.sequence,
+          status: "assigned",
+          customerId,
+          isLegacy: parsed.isLegacy,
+          assignmentHistory: [
+            {
+              action: "assigned",
+              customerId,
+              customerName: customerDoc.fullName,
+              reason: "Imported from AMC Master sheet",
+              timestamp: new Date(),
+            },
+          ],
+          importMeta: {
+            batchId,
+            sourceSheet: session.selectedSheet,
+            sourceRow: contract.rowNumbers[0],
+          },
+        });
+        await jn.save();
+      } else {
+        jn.status = "assigned";
+        jn.customerId = customerId;
+        jn.isLegacy = parsed.isLegacy;
+        jn.assignmentHistory.push({
+          action: "assigned",
+          customerId,
+          customerName: customerDoc.fullName,
+          reason: "Assigned via AMC Master import",
+          timestamp: new Date(),
+        });
+        jn.importMeta = {
+          batchId,
+          sourceSheet: session.selectedSheet,
+          sourceRow: contract.rowNumbers[0],
+        };
+        await jn.save();
+      }
+
+      await ImportAuditLog.create({
+        batchId,
+        entityType: "JobNumber",
+        entityId: jn._id,
+        action: "CREATED",
+        afterImage: jn.toObject(),
+        executedBy: userId,
+        reason: `Assigned Job No ${jobNo} to customer ${customerDoc.fullName}`,
+      });
+      assignedJobNosCount++;
+
+      // Build customer snapshot
+      const customerSnapshot = {
+        jobNo,
+        fullName: customerDoc.fullName,
+        phone: customerDoc.phone || customerDoc.alternatePhone || "",
+        address: customerDoc.address,
+        contactPerson: customerDoc.contactPerson || "",
+        companyName: customerDoc.companyName || "",
+      };
+
+      // Create Services
+      for (const srv of contract.services) {
+        const srvDate = parseExcelPaymentDate(srv.firstService) || parseExcelPaymentDate(srv.secondService) || new Date();
+        const nextDate = parseExcelPaymentDate(srv.secondService) || undefined;
+
+        const newService = new Service({
+          customer: customerId,
+          jobNo,
+          serviceName: srv.serviceName,
+          serviceDate: srvDate,
+          nextServiceDate: nextDate,
+          address: srv.serviceAddress || customerDoc.address,
+          amount: srv.charges || 0,
+          area: srv.area || "",
+          frequency: srv.frequency,
+          rawFrequency: srv.rawFrequency,
+          frequencyType: srv.frequencyType,
+          contractVisitCount: srv.contractVisitCount,
+          customerSnapshot,
+          status: "active",
+          importMeta: {
+            batchId,
+            sourceRows: [srv.rowNumber],
+          },
+        });
+        await newService.save();
+
+        await ImportAuditLog.create({
+          batchId,
+          entityType: "Service",
+          entityId: newService._id,
+          action: "CREATED",
+          afterImage: newService.toObject(),
+          executedBy: userId,
+        });
+        createdServicesCount++;
+      }
+
+      // Create Renewal
+      const serviceVisits = [];
+      const firstRow = contract.services[0] || {};
+      if (firstRow.firstService) serviceVisits.push({ visitLabel: "1ST SERVICE", visitDateStr: String(firstRow.firstService) });
+      if (firstRow.secondService) serviceVisits.push({ visitLabel: "2ND SERVICE", visitDateStr: String(firstRow.secondService) });
+      if (firstRow.thirdService) serviceVisits.push({ visitLabel: "3RD SERVICE", visitDateStr: String(firstRow.thirdService) });
+      if (firstRow.fourthService) serviceVisits.push({ visitLabel: "4TH SERVICE", visitDateStr: String(firstRow.fourthService) });
+
+      const paymentHistory = (contract.payments || []).map((p) => ({
+        receivedAmount: p.amount,
+        date: p.date,
+        mode: p.mode,
+        balance: 0,
+        remark: `Installment P${p.blockIndex}`,
+      }));
+
+      const newRenewal = new Renewal({
+        renewalNumber: jobNo,
+        customer: customerId,
+        customerSnapshot,
+        services: contract.services.map((s) => ({
+          serviceName: s.serviceName,
+          frequency: s.frequency,
+          address: s.serviceAddress || customerDoc.address,
+          amount: s.charges,
+        })),
+        serviceVisits,
+        contractEndDate: parseExcelPaymentDate(firstRow.contractEndDate) || undefined,
+        paymentTerm: firstRow.billingTerms || "ANNUM",
+        subtotal: contract.totalCharges,
+        totalAmount: contract.totalCharges,
+        paymentHistory,
+        status: "Draft",
+        importMeta: {
+          batchId,
+          sourceRows: contract.rowNumbers,
+        },
+      });
+      await newRenewal.save();
+
+      await ImportAuditLog.create({
+        batchId,
+        entityType: "Renewal",
+        entityId: newRenewal._id,
+        action: "CREATED",
+        afterImage: newRenewal.toObject(),
+        executedBy: userId,
+      });
+      createdRenewalsCount++;
+    } catch (err) {
+      errorReport.push({
+        jobNo,
+        problem: "Failed to import contract",
+        reason: err.message,
+      });
+    }
+  }
+
+  // 2. Register Vacant Slots
+  for (const slot of vacantSlots) {
+    try {
+      const parsed = slot.parsed || parseJobNo(slot.jobNo);
+      let jn = await JobNumber.findOne({ jobNo: slot.jobNo });
+      if (!jn) {
+        jn = new JobNumber({
+          jobNo: slot.jobNo,
+          prefix: parsed.prefix,
+          sequence: parsed.sequence,
+          status: "available",
+          customerId: null,
+          isLegacy: parsed.isLegacy,
+          assignmentHistory: [
+            {
+              action: "vacant_registered",
+              customerId: null,
+              reason: "Registered vacant slot from AMC Master sheet",
+              timestamp: new Date(),
+            },
+          ],
+          importMeta: {
+            batchId,
+            sourceSheet: session.selectedSheet,
+            sourceRow: slot.rowNumber,
+          },
+        });
+        await jn.save();
+      } else if (jn.status === "available") {
+        jn.importMeta = {
+          batchId,
+          sourceSheet: session.selectedSheet,
+          sourceRow: slot.rowNumber,
+        };
+        await jn.save();
+      }
+
+      await ImportAuditLog.create({
+        batchId,
+        entityType: "JobNumber",
+        entityId: jn._id,
+        action: "CREATED",
+        afterImage: jn.toObject(),
+        executedBy: userId,
+        reason: `Registered vacant slot ${slot.jobNo}`,
+      });
+      vacantRegisteredCount++;
+    } catch (slotErr) {
+      // Ignore slot duplicate
+    }
+  }
+
+  // 3. Sync Sequence Counters
+  await syncJobNumberSequences();
+
+  session.status = "committed";
+  session.commitResults = {
+    batchId,
+    createdCustomers: createdCustomersCount,
+    updatedCustomers: updatedCustomersCount,
+    createdServices: createdServicesCount,
+    createdRenewals: createdRenewalsCount,
+    assignedJobNumbers: assignedJobNosCount,
+    vacantRegistered: vacantRegisteredCount,
+    skipped: skippedCount,
+  };
+  await session.save();
+
+  return res.status(200).json({
+    message: "AMC Master import session committed successfully",
+    batchId,
+    summary: session.commitResults,
+    errorReport,
+  });
+};
+
+// ============================================================
+// 7. Rollback Batch Endpoint
+// ============================================================
+export const rollbackBatch = async (req, res) => {
+  try {
+    const { batchId } = req.body;
+    if (!batchId) {
+      return res.status(400).json({ message: "batchId is required for rollback" });
+    }
+
+    const auditLogs = await ImportAuditLog.find({ batchId }).sort({ createdAt: -1 });
+    if (!auditLogs || auditLogs.length === 0) {
+      return res.status(404).json({ message: `No import audit logs found for batch ID: ${batchId}` });
+    }
+
+    let deletedCount = 0;
+    let restoredCount = 0;
+    let releasedJobNosCount = 0;
+
+    for (const log of auditLogs) {
+      if (log.action === "CREATED") {
+        if (log.entityType === "Customer") {
+          await Customer.findByIdAndDelete(log.entityId);
+          deletedCount++;
+        } else if (log.entityType === "Service") {
+          await Service.findByIdAndDelete(log.entityId);
+          deletedCount++;
+        } else if (log.entityType === "Renewal") {
+          await Renewal.findByIdAndDelete(log.entityId);
+          deletedCount++;
+        } else if (log.entityType === "Invoice") {
+          await Invoice.findByIdAndDelete(log.entityId);
+          deletedCount++;
+        } else if (log.entityType === "Quotation") {
+          await Quotation.findByIdAndDelete(log.entityId);
+          deletedCount++;
+        } else if (log.entityType === "JobNumber") {
+          const jn = await JobNumber.findById(log.entityId);
+          if (jn) {
+            if (jn.status === "available" && jn.importMeta?.batchId === batchId) {
+              await JobNumber.findByIdAndDelete(log.entityId);
+              deletedCount++;
+            } else if (jn.customerId) {
+              await JobNumber.findByIdAndUpdate(log.entityId, {
+                status: "available",
+                customerId: null,
+                $push: {
+                  assignmentHistory: {
+                    action: "released",
+                    customerId: null,
+                    reason: `Rolled back import batch ${batchId}`,
+                    timestamp: new Date(),
+                  },
+                },
+              });
+              releasedJobNosCount++;
+            }
+          }
+        }
+      } else if (log.action === "ENRICHED" || log.action === "MODIFIED") {
+        if (log.beforeImage && log.entityId) {
+          if (log.entityType === "Customer") {
+            await Customer.findByIdAndUpdate(log.entityId, log.beforeImage);
+            restoredCount++;
+          }
+        }
+      }
+
+      log.action = "ROLLED_BACK";
+      log.reason = `Rolled back at ${new Date().toISOString()}`;
+      await log.save();
+    }
+
+    await syncJobNumberSequences();
+
+    res.status(200).json({
+      message: `Batch ${batchId} rolled back successfully`,
+      batchId,
+      deletedCount,
+      restoredCount,
+      releasedJobNosCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Rollback failed: " + error.message });
+  }
+};
+
+// ============================================================
+// 8. Pre-Migration Database Backup Endpoint
+// ============================================================
+export const triggerPreMigrationBackup = async (req, res) => {
+  try {
+    const backupResult = await createDatabaseBackup();
+    const verification = await verifyBackupIntegrity(backupResult.backupDir);
+
+    res.status(200).json({
+      message: "Database backup created and verified successfully",
+      backupDir: backupResult.backupDir,
+      manifest: backupResult.manifest,
+      verification,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Backup failed: " + error.message });
+  }
+};
+
+// ============================================================
+// 9. Get Past Import Batches Endpoint
+// ============================================================
+export const getImportBatches = async (req, res) => {
+  try {
+    const batches = await ImportAuditLog.aggregate([
+      {
+        $group: {
+          _id: "$batchId",
+          totalLogs: { $sum: 1 },
+          firstActionAt: { $min: "$createdAt" },
+          lastActionAt: { $max: "$createdAt" },
+          actions: { $addToSet: "$action" },
+          entities: { $addToSet: "$entityType" },
+        },
+      },
+      { $sort: { firstActionAt: -1 } },
+      { $limit: 20 },
+    ]);
+
+    const formatted = batches.map((b) => ({
+      batchId: b._id,
+      totalRecords: b.totalLogs,
+      firstActionAt: b.firstActionAt,
+      lastActionAt: b.lastActionAt,
+      status: b.actions.includes("ROLLED_BACK") ? "rolled_back" : "active",
+      entities: b.entities,
+    }));
+
+    res.status(200).json({ batches: formatted });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch import batches: " + error.message });
   }
 };

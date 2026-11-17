@@ -131,7 +131,17 @@ function QuotationDetails() {
     (total, service) => total + Number(service.cost || 0),
     0,
   );
-  const customer = quotation.customer || {};
+  const snap = quotation.customerSnapshot || {};
+  const isRegisteredCustomer = Boolean(
+    quotation.customer &&
+      (typeof quotation.customer === "object"
+        ? quotation.customer._id
+        : quotation.customer),
+  );
+  const customer =
+    isRegisteredCustomer && typeof quotation.customer === "object"
+      ? quotation.customer
+      : snap;
   const customerId =
     typeof quotation.customer === "string"
       ? quotation.customer
@@ -232,12 +242,23 @@ function QuotationDetails() {
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
         <section className="rounded-3xl bg-white p-6 shadow-sm">
           <div className="mb-5 flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold">Customer Information</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-semibold">Customer Information</h2>
+              {isRegisteredCustomer ? (
+                <span className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full font-semibold">
+                  Registered Customer
+                </span>
+              ) : (
+                <span className="text-xs bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-0.5 rounded-full font-semibold">
+                  Manual Customer
+                </span>
+              )}
+            </div>
             {customerId && (
               <button
                 type="button"
                 onClick={() => navigate(`/customers/${customerId}`)}
-                className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                className="text-sm font-medium text-blue-600 hover:text-blue-700 cursor-pointer"
               >
                 View Customer
               </button>
@@ -248,31 +269,43 @@ function QuotationDetails() {
             <div>
               <dt className="text-sm text-gray-500">Name</dt>
               <dd className="mt-1 font-medium">
-                {customer.fullName || "Not available"}
+                {customer.fullName || snap.fullName || snap.customerName || "Not available"}
               </dd>
             </div>
             <div>
               <dt className="text-sm text-gray-500">Company</dt>
               <dd className="mt-1 font-medium">
-                {customer.companyName || "Not available"}
+                {customer.companyName || snap.companyName || "-"}
               </dd>
             </div>
             <div>
               <dt className="text-sm text-gray-500">Phone</dt>
               <dd className="mt-1 font-medium">
-                {customer.phone || "Not available"}
+                {customer.phone || snap.phone || "Not available"}
               </dd>
             </div>
             <div>
               <dt className="text-sm text-gray-500">Email</dt>
               <dd className="mt-1 break-words font-medium">
-                {customer.email || "Not available"}
+                {customer.email || snap.email || "-"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">Contact Person</dt>
+              <dd className="mt-1 font-medium">
+                {customer.contactPerson || snap.contactPerson || "-"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-sm text-gray-500">GST Number</dt>
+              <dd className="mt-1 font-medium">
+                {customer.gstNumber || snap.gstNumber || "-"}
               </dd>
             </div>
             <div className="sm:col-span-2">
               <dt className="text-sm text-gray-500">Customer Address</dt>
               <dd className="mt-1 whitespace-pre-line font-medium">
-                {customer.address || "Not available"}
+                {customer.address || snap.address || quotation.premises || "Not available"}
               </dd>
             </div>
           </dl>

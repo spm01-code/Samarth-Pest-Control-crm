@@ -14,8 +14,10 @@ function ToastItemView({ item, onDismiss }) {
   const timerRef = useRef(null);
   const startTimeRef = useRef(Date.now());
 
+  const isExiting = Boolean(item.isExiting);
+
   useEffect(() => {
-    if (item.duration <= 0) return;
+    if (item.duration <= 0 || isExiting) return;
 
     if (!isPaused) {
       startTimeRef.current = Date.now();
@@ -29,17 +31,17 @@ function ToastItemView({ item, onDismiss }) {
         clearTimeout(timerRef.current);
       }
     };
-  }, [isPaused, remainingTime, item.id, item.duration, onDismiss]);
+  }, [isPaused, remainingTime, item.id, item.duration, isExiting, onDismiss]);
 
   const handleMouseEnter = () => {
-    if (item.duration <= 0) return;
+    if (item.duration <= 0 || isExiting) return;
     const elapsed = Date.now() - startTimeRef.current;
     setRemainingTime((prev) => Math.max(prev - elapsed, 500));
     setIsPaused(true);
   };
 
   const handleMouseLeave = () => {
-    if (item.duration <= 0) return;
+    if (item.duration <= 0 || isExiting) return;
     setIsPaused(false);
   };
 
@@ -48,28 +50,28 @@ function ToastItemView({ item, onDismiss }) {
       Icon: HiCheckCircle,
       iconClass: "text-emerald-400",
       borderClass: "border-emerald-500/30",
-      accentBg: "bg-emerald-500/10",
+      accentBg: "bg-emerald-500/15",
       label: "Success",
     },
     error: {
       Icon: HiXCircle,
       iconClass: "text-rose-400",
       borderClass: "border-rose-500/30",
-      accentBg: "bg-rose-500/10",
+      accentBg: "bg-rose-500/15",
       label: "Error",
     },
     warning: {
       Icon: HiExclamationTriangle,
       iconClass: "text-amber-400",
       borderClass: "border-amber-500/30",
-      accentBg: "bg-amber-500/10",
+      accentBg: "bg-amber-500/15",
       label: "Warning",
     },
     info: {
       Icon: HiInformationCircle,
       iconClass: "text-sky-400",
       borderClass: "border-sky-500/30",
-      accentBg: "bg-sky-500/10",
+      accentBg: "bg-sky-500/15",
       label: "Information",
     },
   };
@@ -84,12 +86,21 @@ function ToastItemView({ item, onDismiss }) {
       aria-live={isAlert ? "assertive" : "polite"}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className={`pointer-events-auto flex items-start gap-3 w-full bg-slate-900/95 text-white border ${config.borderClass} rounded-2xl p-4 shadow-2xl backdrop-blur-md transition-all duration-300 transform translate-y-0 hover:border-slate-500/50`}
+      className={`pointer-events-auto flex items-center gap-3 w-full bg-slate-900/95 text-white border ${
+        config.borderClass
+      } rounded-2xl px-4 py-3.5 shadow-2xl backdrop-blur-md transition-colors hover:border-slate-500/50 ${
+        isExiting ? "toast-exit" : "toast-enter"
+      }`}
     >
-      <div className={`p-1 rounded-lg shrink-0 mt-0.5 ${config.accentBg}`}>
-        <Icon className={`size-5 ${config.iconClass}`} aria-hidden="true" />
+      {/* Icon Container: Fixed dimensions (32x32), perfectly centered */}
+      <div
+        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${config.accentBg}`}
+        aria-hidden="true"
+      >
+        <Icon className={`size-5 ${config.iconClass}`} />
       </div>
 
+      {/* Message Container: Flexible width, vertical center aligned on same horizontal axis */}
       <div className="flex-1 min-w-0 pr-1">
         <span className="sr-only">{config.label}: </span>
         <p className="text-sm font-medium text-slate-100 leading-snug break-words">
@@ -97,11 +108,12 @@ function ToastItemView({ item, onDismiss }) {
         </p>
       </div>
 
+      {/* Close Button: Fixed dimensions (28x28), vertically centered */}
       <button
         type="button"
         onClick={() => onDismiss(item.id)}
         aria-label="Close notification"
-        className="text-slate-400 hover:text-slate-100 hover:bg-white/10 rounded-lg p-1 transition shrink-0 cursor-pointer"
+        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition shrink-0 cursor-pointer"
       >
         <HiXMark className="size-4" />
       </button>

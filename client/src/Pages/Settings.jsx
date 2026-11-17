@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import useBodyScrollLock from "../utils/useBodyScrollLock";
 import {
@@ -11,6 +12,12 @@ import {
   HiOutlineTrash,
   HiOutlineCheck,
   HiOutlineInformationCircle,
+  HiOutlineArrowPath,
+  HiOutlineShieldCheck,
+  HiOutlineCheckCircle,
+  HiOutlineExclamationTriangle,
+  HiOutlineClock,
+  HiOutlineArrowTopRightOnSquare,
 } from "react-icons/hi2";
 import {
   fetchTemplatesAPI,
@@ -22,6 +29,10 @@ import {
   fetchCompanySettingsAPI,
   updateCompanySettingsAPI,
 } from "../API/companySettingAPI";
+import {
+  getJobNumberStats,
+  syncJobNumberRegistryAPI,
+} from "../API/jobNumberAPI";
 import { toast } from "../utils/toast";
 import { formatDateOnly, formatTimestamp } from "../utils/dateUtils";
 import { getErrorMessage } from "../utils/errorHandler";
@@ -125,6 +136,64 @@ function Settings() {
     const savedPrefixes = localStorage.getItem("crm_settings_prefixes");
     if (savedPrefixes) setPrefixData(JSON.parse(savedPrefixes));
   }, []);
+
+  // 4. Job Numbers State
+  const [jnStats, setJnStats] = useState({
+    totalCount: 0,
+    assignedCount: 0,
+    availableCount: 0,
+    legacyCount: 0,
+    prefixBreakdown: [],
+  });
+  const [loadingJnStats, setLoadingJnStats] = useState(false);
+  const [syncingRegistry, setSyncingRegistry] = useState(false);
+  const [lastSyncResult, setLastSyncResult] = useState(null);
+
+  const loadJnStats = async () => {
+    if (!token) return;
+    setLoadingJnStats(true);
+    try {
+      const data = await executeWithRefresh((t) => getJobNumberStats(t));
+      if (data) {
+        setJnStats({
+          totalCount: data.totalCount ?? data.metrics?.total ?? 0,
+          assignedCount: data.assignedCount ?? data.metrics?.assigned ?? 0,
+          availableCount: data.availableCount ?? data.metrics?.available ?? 0,
+          legacyCount: data.legacyCount ?? data.metrics?.legacy ?? 0,
+          prefixBreakdown: data.prefixBreakdown || data.alphabetBreakdown || [],
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load Job Number statistics:", err);
+    } finally {
+      setLoadingJnStats(false);
+    }
+  };
+
+  const handleSyncRegistry = async () => {
+    if (!token || syncingRegistry) return;
+    setSyncingRegistry(true);
+    try {
+      const data = await executeWithRefresh((t) => syncJobNumberRegistryAPI(t));
+      if (data && data.success) {
+        toast.success(data.message || "Job Number registry synchronized successfully!");
+        setLastSyncResult(data.result);
+        await loadJnStats();
+      } else {
+        toast.error(getErrorMessage(data?.message, "Failed to synchronize registry"));
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Failed to synchronize registry"));
+    } finally {
+      setSyncingRegistry(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "jobNumbers") {
+      loadJnStats();
+    }
+  }, [activeTab]);
 
   const loadCompanySettings = async () => {
     if (!token) return;
@@ -422,7 +491,7 @@ function Settings() {
           </button>
           <button
             onClick={() => setActiveTab("templates")}
-            className={`flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-medium transition ${
+            className={`flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-medium transition cursor-pointer ${
               activeTab === "templates"
                 ? "bg-blue-50 text-blue-700 font-semibold"
                 : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
@@ -430,6 +499,17 @@ function Settings() {
           >
             <HiOutlineDocumentText className="size-5" />
             Template Settings
+          </button>
+          <button
+            onClick={() => setActiveTab("jobNumbers")}
+            className={`flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-medium transition cursor-pointer ${
+              activeTab === "jobNumbers"
+                ? "bg-blue-50 text-blue-700 font-semibold"
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <HiOutlineHashtag className="size-5" />
+            Job Numbers
           </button>
         </div>
 
@@ -803,7 +883,7 @@ function Settings() {
                       <div className="border-b border-slate-100 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                           <h2 className="text-lg font-bold text-slate-900">{mod.label}</h2>
-                          <p className="text-xs text-slate-500 mt-0.5">Select active template or upload new DOCX templates</p>
+                          <p className="text-xs text-slate-500 mt-0.5">Select active template or upload new DOCX or PDF templates</p>
                         </div>
                         <button
                           onClick={() => {
@@ -846,7 +926,18 @@ function Settings() {
                                 >
                                   <div>
                                     <div className="flex items-center justify-between">
-                                      <h4 className="text-sm font-semibold text-slate-800">{tpl.templateName}</h4>
+                                      <div className="flex items-center gap-2">
+                                        <h4 className="text-sm font-semibold text-slate-800">{tpl.templateName}</h4>
+                                        <span
+                                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                            tpl.mimeType === "application/pdf" || tpl.fileName?.toLowerCase().endsWith(".pdf")
+                                              ? "bg-red-50 text-red-700 border border-red-200"
+                                              : "bg-blue-50 text-blue-700 border border-blue-200"
+                                          }`}
+                                        >
+                                          {tpl.mimeType === "application/pdf" || tpl.fileName?.toLowerCase().endsWith(".pdf") ? "PDF" : "DOCX"}
+                                        </span>
+                                      </div>
                                       <div className="flex items-center gap-1.5">
                                         {isActive ? (
                                           <span className="flex items-center justify-center size-5 rounded-full bg-blue-600 text-white">
@@ -897,6 +988,245 @@ function Settings() {
               )}
             </div>
           )}
+
+          {/* TAB 4: JOB NUMBERS SETTINGS & REGISTRY */}
+          {activeTab === "jobNumbers" && (
+            <div className="space-y-6">
+              {/* CARD 1: ALLOCATION STRATEGY & BUSINESS RULES */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200/50 overflow-hidden">
+                <div className="border-b border-slate-100 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                      <HiOutlineHashtag className="text-blue-600 size-6" />
+                      Job Number Allocation Strategy & System Architecture
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Rules, constraints, and operational mechanisms governing AMC customer code allocation
+                    </p>
+                  </div>
+                  <Link
+                    to="/job-numbers"
+                    className="self-start sm:self-auto flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100/80 px-3.5 py-2 rounded-xl transition"
+                  >
+                    <span>Open Full Management</span>
+                    <HiOutlineArrowTopRightOnSquare className="size-4" />
+                  </Link>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {/* Core Rules Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/60">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-lg bg-emerald-100 text-emerald-700 shrink-0">
+                          <HiOutlineCheckCircle className="size-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">Smallest-Available Gap Reuse</h4>
+                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                            The allocation engine searches for the lowest numeric vacant slot (e.g. A/03 before A/15) within the matching prefix. New sequential numbers are only created when no vacancies exist.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/60">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-lg bg-blue-100 text-blue-700 shrink-0">
+                          <HiOutlineShieldCheck className="size-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">Alphabetical Prefix Isolation</h4>
+                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                            Prefixed dynamically from the first valid letter of the customer or company name (A-Z). Each prefix maintains its own isolated counter and vacancy registry to avoid collisions.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/60">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-lg bg-amber-100 text-amber-700 shrink-0">
+                          <HiOutlineExclamationTriangle className="size-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">Legacy Format Protection</h4>
+                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                            Irregular existing codes (such as A/07X4, P/05A) are flagged as legacy. They are preserved intact with full historical fidelity and never recycled into automatic standard sequences.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl border border-slate-100 bg-slate-50/60">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2 rounded-lg bg-indigo-100 text-indigo-700 shrink-0">
+                          <HiOutlineClock className="size-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">Lifecycle: Release & Restore</h4>
+                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                            Soft-deleting or archiving a customer immediately releases their Job Number to the available pool. Restoring reclaims their original slot if still vacant, or safely assigns the next smallest gap.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Isolation Note Banner */}
+                  <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-200/60 flex items-start gap-3 text-xs text-blue-900">
+                    <HiOutlineInformationCircle className="size-5 text-blue-600 shrink-0 mt-0.5" />
+                    <div className="leading-relaxed">
+                      <strong className="font-semibold text-blue-950">Strict Document Isolation:</strong> Customer Job Numbers (e.g. A/01) are immutable customer account codes and are completely independent from transactional document prefixes (Invoices: INV-, Quotations: QTN-, Renewals: REN-). Modifying document prefix settings will never alter or resequence customer Job Numbers.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD 2: SUMMARY METRICS & ALPHABETICAL COUNTERS (A-Z) */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200/50 overflow-hidden">
+                <div className="border-b border-slate-100 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                      <HiOutlineHashtag className="text-blue-600" />
+                      Alphabetical Sequence Overview & Slot Occupancy (A-Z)
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Real-time status of atomic sequence counters, occupied accounts, and available slots across all 26 letters
+                    </p>
+                  </div>
+                  <button
+                    onClick={loadJnStats}
+                    disabled={loadingJnStats}
+                    className="self-start sm:self-auto flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer"
+                  >
+                    <HiOutlineArrowPath className={`size-4 ${loadingJnStats ? "animate-spin" : ""}`} />
+                    <span>Refresh Overview</span>
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {/* KPI Mini Row */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
+                      <p className="text-xs font-bold text-slate-500 uppercase">Total Managed Slots</p>
+                      <p className="text-2xl font-black text-slate-900 mt-1 font-mono">{jnStats.totalCount}</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-emerald-50/50 border border-emerald-100">
+                      <p className="text-xs font-bold text-emerald-700 uppercase">Available for Reuse</p>
+                      <p className="text-2xl font-black text-emerald-600 mt-1 font-mono">{jnStats.availableCount}</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-100">
+                      <p className="text-xs font-bold text-blue-700 uppercase">Currently Assigned</p>
+                      <p className="text-2xl font-black text-blue-600 mt-1 font-mono">{jnStats.assignedCount}</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-amber-50/50 border border-amber-100">
+                      <p className="text-xs font-bold text-amber-700 uppercase">Legacy Formats</p>
+                      <p className="text-2xl font-black text-amber-600 mt-1 font-mono">{jnStats.legacyCount}</p>
+                    </div>
+                  </div>
+
+                  {/* 26 Letters Table */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto max-h-[380px] overflow-y-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-bold text-[10px] sticky top-0 z-10">
+                          <tr>
+                            <th className="px-4 py-3">Prefix</th>
+                            <th className="px-4 py-3">Assigned Slots</th>
+                            <th className="px-4 py-3">Vacant Slots (Reuse)</th>
+                            <th className="px-4 py-3">Legacy Formats</th>
+                            <th className="px-4 py-3">Total Managed</th>
+                            <th className="px-4 py-3 text-right">Registry Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {jnStats.prefixBreakdown.map((row) => (
+                            <tr key={row.prefix} className="hover:bg-slate-50/80 transition">
+                              <td className="px-4 py-2.5 font-bold font-mono text-slate-900 text-sm">
+                                <span className="size-7 inline-flex items-center justify-center rounded-lg bg-blue-50 text-blue-700 border border-blue-200/50">
+                                  {row.prefix}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2.5 font-mono text-slate-700 font-bold">
+                                {row.assigned}
+                              </td>
+                              <td className="px-4 py-2.5">
+                                {row.available > 0 ? (
+                                  <span className="inline-flex items-center gap-1 font-bold font-mono px-2 py-0.5 rounded-full text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    {row.available} ready
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-mono">0</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5 font-mono text-amber-600">
+                                {row.legacy > 0 ? `${row.legacy} legacy` : "—"}
+                              </td>
+                              <td className="px-4 py-2.5 font-mono text-slate-600">
+                                {row.total}
+                              </td>
+                              <td className="px-4 py-2.5 text-right">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600">
+                                  <span className="size-1.5 rounded-full bg-emerald-500"></span>
+                                  Synchronized
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CARD 3: REGISTRY SYNCHRONIZATION & REPAIR */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200/50 overflow-hidden">
+                <div className="border-b border-slate-100 p-6">
+                  <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                    <HiOutlineArrowPath className="text-blue-600" />
+                    Registry & Sequence Synchronization
+                  </h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Perform administrative reconciliation between customer records, slot occupancy, and atomic sequence counters
+                  </p>
+                </div>
+
+                <div className="p-6 space-y-5">
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-bold text-slate-900">Synchronize Registry & Sequences</h4>
+                      <p className="text-xs text-slate-500 max-w-2xl leading-relaxed">
+                        Scans all active and archived customer records, registers any unindexed Job Numbers into the registry, scans all sequences from 1 to maxSequence to identify and register vacant reusable slots, and aligns atomic sequence counters across all prefixes A-Z.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleSyncRegistry}
+                      disabled={syncingRegistry}
+                      className="shrink-0 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-xs px-5 py-3 rounded-xl transition flex items-center gap-2 shadow-sm cursor-pointer"
+                    >
+                      <HiOutlineArrowPath className={`size-4 ${syncingRegistry ? "animate-spin" : ""}`} />
+                      <span>{syncingRegistry ? "Synchronizing Registry..." : "Synchronize Registry & Sequences"}</span>
+                    </button>
+                  </div>
+
+                  {lastSyncResult && (
+                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-start gap-2.5">
+                      <HiOutlineCheckCircle className="size-5 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-emerald-950">Last Synchronization Succeeded</p>
+                        <p className="mt-0.5 text-emerald-800">
+                          Total managed slots: <strong className="font-mono">{lastSyncResult.totalManaged}</strong> ({lastSyncResult.assigned} assigned, {lastSyncResult.available} vacant ready for reuse, {lastSyncResult.legacy} legacy). All {lastSyncResult.sequencesSynced} prefix sequences verified.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -906,7 +1236,7 @@ function Settings() {
           <div
             role="dialog"
             aria-modal="true"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overscroll-contain"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto overscroll-contain animate-in fade-in duration-200"
             onClick={(e) => {
               if (e.target === e.currentTarget && !submittingTemplate) {
                 setShowAddTemplateModal(false);
@@ -914,12 +1244,12 @@ function Settings() {
             }}
           >
             <div
-              className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col my-auto animate-in zoom-in-95 duration-200"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between shrink-0">
                 <h3 className="text-base font-bold text-slate-900">
-                  Add New Document DOCX Template
+                  Add New Document Template (DOCX or PDF)
                 </h3>
                 <button
                   type="button"
@@ -1021,7 +1351,7 @@ function Settings() {
           <div
             role="dialog"
             aria-modal="true"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overscroll-contain"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto overscroll-contain animate-in fade-in duration-200"
             onClick={(e) => {
               if (e.target === e.currentTarget && !savingCompany) {
                 setShowCompanyModal(false);
@@ -1029,7 +1359,7 @@ function Settings() {
             }}
           >
             <div
-              className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col"
+              className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col my-auto animate-in zoom-in-95 duration-200"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="border-b border-slate-100 px-6 py-4 flex items-center justify-between shrink-0">

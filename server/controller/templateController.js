@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import DocumentTemplate from "../model/documentTemplateModel.js";
+import { validatePdfTemplateForCategory } from "../utils/pdfTemplateInspector.js";
 
 const templatesDirectory = path.resolve(
   process.cwd(),
@@ -24,6 +25,42 @@ export const uploadTemplate = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Template file (.docx or .pdf) is required",
+      });
+    }
+
+    // Validate file magic bytes
+    let detectedMimeType = req.file.mimetype;
+    try {
+      const bufferHeader = Buffer.alloc(5);
+      const fd = fs.openSync(req.file.path, "r");
+      fs.readSync(fd, bufferHeader, 0, 5, 0);
+      fs.closeSync(fd);
+
+      const isPdfHeader = bufferHeader.toString("ascii").startsWith("%PDF-");
+      const isDocxHeader =
+        bufferHeader[0] === 0x50 &&
+        bufferHeader[1] === 0x4b &&
+        bufferHeader[2] === 0x03 &&
+        bufferHeader[3] === 0x04;
+
+      if (!isPdfHeader && !isDocxHeader) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({
+          success: false,
+          message: "Uploaded file is not a valid DOCX or PDF document",
+        });
+      }
+
+      detectedMimeType = isPdfHeader
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    } catch (readErr) {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      return res.status(400).json({
+        success: false,
+        message: "Failed to read and validate uploaded template file",
       });
     }
 
@@ -56,6 +93,23 @@ export const uploadTemplate = async (req, res) => {
       });
     }
 
+    // Category-specific validation for PDF templates (rejects scanned/non-text and mismatched-category PDFs)
+    if (detectedMimeType === "application/pdf") {
+      try {
+        const pdfBytes = fs.readFileSync(req.file.path);
+        await validatePdfTemplateForCategory(pdfBytes, documentType);
+      } catch (validationErr) {
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        return res.status(validationErr.statusCode || 400).json({
+          success: false,
+          message: validationErr.message,
+          ...(validationErr.details ? { details: validationErr.details } : {}),
+        });
+      }
+    }
+
     // Deactivate existing active template
     await DocumentTemplate.updateMany(
       {
@@ -74,7 +128,7 @@ export const uploadTemplate = async (req, res) => {
       templateName: templateName.trim(),
       fileName: req.file.originalname,
       filePath: req.file.path,
-      mimeType: req.file.mimetype,
+      mimeType: detectedMimeType,
       isActive: true,
       uploadedBy: req.admin._id,
     });
@@ -91,7 +145,7 @@ export const uploadTemplate = async (req, res) => {
       fs.unlinkSync(req.file.path);
     }
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });
@@ -212,6 +266,38 @@ export const activateTemplate = async (req, res) => {
         success: false,
         message: "Template not found",
       });
+    }
+
+    const isPdf =
+      template.mimeType === "application/pdf" ||
+      template.filePath?.toLowerCase().endsWith(".pdf") ||
+      template.fileName?.toLowerCase().endsWith(".pdf");
+
+    if (isPdf) {
+      const baseName = template.filePath ? path.basename(template.filePath) : "";
+      const candidatePaths = [
+        template.filePath,
+        baseName ? path.join(templatesDirectory, baseName) : null,
+        baseName ? path.resolve(process.cwd(), "server", "uploads", "templates", baseName) : null,
+      ].filter(Boolean);
+      const resolvedPath = candidatePaths.find((p) => fs.existsSync(p)) || null;
+      if (!resolvedPath) {
+        return res.status(404).json({
+          success: false,
+          message: "Template PDF file not found on disk",
+        });
+      }
+      try {
+        await validatePdfTemplateForCategory(
+          fs.readFileSync(resolvedPath),
+          template.documentType
+        );
+      } catch (validationErr) {
+        return res.status(validationErr.statusCode || 400).json({
+          success: false,
+          message: validationErr.message,
+        });
+      }
     }
 
     // Deactivate existing active templates of the same documentType

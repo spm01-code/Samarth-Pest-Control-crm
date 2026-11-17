@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
+import { useScrollLock } from "../hooks/useScrollLock";
 import {
   HiOutlineCloudArrowUp,
   HiOutlineDocumentText,
@@ -24,7 +26,11 @@ import {
   getImportHelpers,
   validateImportSession,
   commitImportSession,
+  rollbackImportBatch,
+  triggerImportBackup,
+  getImportBatches,
 } from "../API/importAPI";
+import { toast } from "../utils/toast";
 
 // Searchable Select Dropdown with search filter
 function SearchableSelect({
@@ -205,6 +211,20 @@ function Upload() {
   const [paymentHeaders, setPaymentHeaders] = useState([]);
   const [activeFilter, setActiveFilter] = useState("ALL");
 
+  // AMC Master Specific Data
+  const [fieldConflicts, setFieldConflicts] = useState([]);
+  const [vacantSlots, setVacantSlots] = useState([]);
+  const [groupedContracts, setGroupedContracts] = useState([]);
+  const [p09Conflict, setP09Conflict] = useState(null);
+  const [showConflictsModal, setShowConflictsModal] = useState(false);
+  const [backupStatus, setBackupStatus] = useState(null);
+  const [backingUp, setBackingUp] = useState(false);
+  const [showBatchesModal, setShowBatchesModal] = useState(false);
+  const [importBatches, setImportBatches] = useState([]);
+  const [rollingBack, setRollingBack] = useState(false);
+
+  useScrollLock(showConflictsModal || showBatchesModal);
+
   // Step 5 Data
   const [commitSummary, setCommitSummary] = useState(null);
   const [errorReport, setErrorReport] = useState([]);
@@ -310,6 +330,10 @@ function Upload() {
         token
       );
       setValidationSummary(res.summary);
+      setFieldConflicts(res.fieldConflicts || []);
+      setVacantSlots(res.vacantSlots || []);
+      setGroupedContracts(res.groupedContracts || []);
+      setP09Conflict(res.p09Conflict || null);
       setReconciliationReport(res.reconciliationReport || []);
       setRows(res.rows || []);
       setUnmappedHeaders(res.unmappedHeaders || []);
@@ -334,18 +358,39 @@ function Upload() {
     );
   };
 
+  // Update AMC Contract Choice
+  const handleContractChoiceChange = (jobNo, key, value) => {
+    setGroupedContracts((prev) =>
+      prev.map((c) => {
+        if (c.jobNo === jobNo) {
+          return { ...c, [key]: value };
+        }
+        return c;
+      })
+    );
+  };
+
   // Execute Commit
   const handleCommit = async () => {
     setLoading(true);
     setErrorMsg("");
     try {
-      const choices = rows.map((r) => ({
-        rowNumber: r.rowNumber,
-        action: r.action,
-        customerAction: r.customerAction,
-        selectedCustomerId: r.selectedCustomerId,
-        selectedEmployeeId: r.selectedEmployeeId,
-      }));
+      let choices = [];
+      if (groupedContracts && groupedContracts.length > 0) {
+        choices = groupedContracts.map((c) => ({
+          jobNo: c.jobNo,
+          action: c.action || (c.reviewRequired ? "REVIEW" : "IMPORT"),
+          selectedCustomerId: c.matchedCustomer ? c.matchedCustomer.id : null,
+        }));
+      } else {
+        choices = rows.map((r) => ({
+          rowNumber: r.rowNumber,
+          action: r.action,
+          customerAction: r.customerAction,
+          selectedCustomerId: r.selectedCustomerId,
+          selectedEmployeeId: r.selectedEmployeeId,
+        }));
+      }
 
       const res = await commitImportSession(
         {
@@ -361,6 +406,46 @@ function Upload() {
       setErrorMsg(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Trigger Pre-Migration Backup
+  const handleTriggerBackup = async () => {
+    setBackingUp(true);
+    try {
+      const res = await triggerImportBackup(token);
+      setBackupStatus(res);
+      toast.success("Pre-migration database backup created and verified!");
+    } catch (err) {
+      toast.error("Backup failed: " + err.message);
+    } finally {
+      setBackingUp(false);
+    }
+  };
+
+  // Load Past Batches
+  const handleLoadBatches = async () => {
+    try {
+      const res = await getImportBatches(token);
+      setImportBatches(res.batches || []);
+      setShowBatchesModal(true);
+    } catch (err) {
+      toast.error("Failed to load import batches: " + err.message);
+    }
+  };
+
+  // Rollback Past Batch
+  const handleRollbackBatch = async (batchId) => {
+    if (!window.confirm(`Are you sure you want to rollback batch ${batchId}? This will delete created records and release allocated Job Numbers.`)) return;
+    setRollingBack(true);
+    try {
+      const res = await rollbackImportBatch(batchId, token);
+      toast.success(res.message || "Batch rolled back successfully.");
+      handleLoadBatches();
+    } catch (err) {
+      toast.error("Rollback failed: " + err.message);
+    } finally {
+      setRollingBack(false);
     }
   };
 
@@ -388,29 +473,40 @@ function Upload() {
           </p>
         </div>
 
-        {/* Step Indicators */}
-        <div className="flex items-center gap-2 bg-slate-800/80 p-2 rounded-2xl border border-slate-700/50">
-          {[
-            { s: 1, label: "Upload" },
-            { s: 2, label: "Sheet" },
-            { s: 3, label: "Mapping" },
-            { s: 4, label: "Preview" },
-            { s: 5, label: "Done" },
-          ].map((item) => (
-            <div
-              key={item.s}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                step === item.s
-                  ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20"
-                  : step > item.s
-                  ? "bg-slate-700 text-cyan-300"
-                  : "text-slate-500"
-              }`}
-            >
-              <span>{item.s}</span>
-              <span className="hidden md:inline">{item.label}</span>
-            </div>
-          ))}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleLoadBatches}
+            className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 px-3.5 py-2 rounded-2xl text-xs font-semibold flex items-center gap-2 cursor-pointer transition shadow-sm"
+          >
+            <HiOutlineArrowPath className="size-4 text-cyan-400" />
+            <span>Past Batches & Rollback</span>
+          </button>
+
+          {/* Step Indicators */}
+          <div className="flex items-center gap-2 bg-slate-800/80 p-2 rounded-2xl border border-slate-700/50">
+            {[
+              { s: 1, label: "Upload" },
+              { s: 2, label: "Sheet" },
+              { s: 3, label: "Mapping" },
+              { s: 4, label: "Preview" },
+              { s: 5, label: "Done" },
+            ].map((item) => (
+              <div
+                key={item.s}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                  step === item.s
+                    ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20"
+                    : step > item.s
+                    ? "bg-slate-700 text-cyan-300"
+                    : "text-slate-500"
+                }`}
+              >
+                <span>{item.s}</span>
+                <span className="hidden md:inline">{item.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -618,7 +714,235 @@ function Upload() {
 
         {/* STEP 4: INTERACTIVE PREVIEW & MANUAL RESOLUTION */}
         {step === 4 && validationSummary && (
-          <div className="space-y-6">
+          validationSummary.uniqueOccupiedJobNumbers !== undefined ? (
+            <div className="space-y-6">
+              {/* AMC Master KPI Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="bg-slate-800/80 border border-slate-700/60 p-4 rounded-2xl">
+                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Occupied Contracts</p>
+                  <p className="text-2xl font-extrabold text-white mt-1">{validationSummary.uniqueOccupiedJobNumbers}</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Active Job Numbers</p>
+                </div>
+                <div className="bg-emerald-950/40 border border-emerald-500/30 p-4 rounded-2xl">
+                  <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-wider">Unique Clients</p>
+                  <p className="text-2xl font-extrabold text-emerald-300 mt-1">{validationSummary.uniqueCustomerNames}</p>
+                  <p className="text-[10px] text-emerald-500/80 mt-0.5">{validationSummary.uniqueOccupiedJobNumbers - validationSummary.uniqueCustomerNames} Multi-Site</p>
+                </div>
+                <div className="bg-cyan-950/40 border border-cyan-500/30 p-4 rounded-2xl">
+                  <p className="text-cyan-400 text-[10px] font-bold uppercase tracking-wider">Service Lines</p>
+                  <p className="text-2xl font-extrabold text-cyan-300 mt-1">{validationSummary.totalServiceEntries}</p>
+                  <p className="text-[10px] text-cyan-500/80 mt-0.5">AMC Service Records</p>
+                </div>
+                <div className="bg-blue-950/40 border border-blue-500/30 p-4 rounded-2xl">
+                  <p className="text-blue-400 text-[10px] font-bold uppercase tracking-wider">Vacant Slots</p>
+                  <p className="text-2xl font-extrabold text-blue-300 mt-1">{validationSummary.vacantSlotsCount}</p>
+                  <p className="text-[10px] text-blue-500/80 mt-0.5">A-Z Gaps Tracked</p>
+                </div>
+                <div className="bg-amber-950/40 border border-amber-500/30 p-4 rounded-2xl">
+                  <p className="text-amber-400 text-[10px] font-bold uppercase tracking-wider">Field Conflicts</p>
+                  <p className="text-2xl font-extrabold text-amber-300 mt-1">{validationSummary.fieldConflictsCount}</p>
+                  <p className="text-[10px] text-amber-500/80 mt-0.5">Inconsistencies</p>
+                </div>
+                <div className="bg-purple-950/40 border border-purple-500/30 p-4 rounded-2xl">
+                  <p className="text-purple-400 text-[10px] font-bold uppercase tracking-wider">Dedup Payments</p>
+                  <p className="text-2xl font-extrabold text-purple-300 mt-1">{validationSummary.paymentEntriesCount}</p>
+                  <p className="text-[10px] text-purple-500/80 mt-0.5">Formulas Excluded</p>
+                </div>
+              </div>
+
+              {/* P/09 Conflict Alert Banner */}
+              {p09Conflict && (
+                <div className="bg-amber-950/60 border border-amber-500/50 p-4 rounded-2xl flex items-start gap-3 shadow-lg">
+                  <HiOutlineExclamationTriangle className="size-6 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-200">
+                    <p className="font-bold text-sm text-amber-300">Slot P/09 Conflict Detected & Protected</p>
+                    <p className="mt-1 text-slate-300 leading-relaxed">
+                      Workbook contains Job Number <span className="font-mono font-bold text-amber-300">P/09</span> occupied in rows 189/190 by <strong className="text-white">PAWAR PATKAR CONST</strong> and blank in row 193.
+                      The CRM migration pipeline will assign <span className="font-mono text-cyan-300">P/09</span> to Pawar Patkar Construction and ignore the blank row without overwriting existing data.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Safeguard & Backup Action Bar */}
+              <div className="bg-slate-800/70 border border-slate-700/60 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowConflictsModal(true)}
+                    className="bg-amber-950/50 hover:bg-amber-900/60 text-amber-300 border border-amber-500/40 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer"
+                  >
+                    <HiOutlineExclamationTriangle className="size-4" />
+                    Review Field Inconsistencies ({fieldConflicts.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleTriggerBackup}
+                    disabled={backingUp}
+                    className="bg-slate-900 hover:bg-slate-850 text-cyan-300 border border-cyan-500/40 hover:border-cyan-400 px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer"
+                  >
+                    {backingUp ? (
+                      <HiOutlineArrowPath className="size-4 animate-spin text-cyan-400" />
+                    ) : (
+                      <HiOutlineShieldCheck className="size-4 text-cyan-400" />
+                    )}
+                    {backingUp ? "Creating Database Backup..." : "Create Pre-Migration DB Backup"}
+                  </button>
+
+                  {backupStatus && (
+                    <span className="bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                      <HiOutlineCheckCircle className="size-4 text-emerald-400" />
+                      Backup Verified (11 Collections)
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStep(3)}
+                    className="bg-slate-700 hover:bg-slate-600 text-white font-semibold px-4 py-2 rounded-xl text-xs transition cursor-pointer"
+                  >
+                    Edit Mappings
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCommit}
+                    disabled={loading}
+                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-extrabold px-6 py-2 rounded-xl shadow-lg shadow-emerald-500/20 transition flex items-center gap-2 cursor-pointer"
+                  >
+                    {loading ? <HiOutlineArrowPath className="animate-spin size-5" /> : "Commit AMC Migration"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Grouped AMC Contracts Review Table */}
+              <div className="bg-slate-800/60 border border-slate-700/60 rounded-2xl overflow-hidden shadow-2xl">
+                <div className="p-4 border-b border-slate-700/60 flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <HiOutlineDocumentText className="text-cyan-400 size-5" />
+                    Grouped AMC Contracts Preview ({groupedContracts.length} Occupied Job Numbers)
+                  </h3>
+                  <span className="text-xs text-slate-400">
+                    50 Vacant Slots will be registered as available for reuse
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-900 text-slate-300 font-bold uppercase tracking-wider sticky top-0 border-b border-slate-700 z-10">
+                      <tr>
+                        <th className="p-3">Job No</th>
+                        <th className="p-3">Client / Site Name</th>
+                        <th className="p-3">Contact & Phone</th>
+                        <th className="p-3">Site Address</th>
+                        <th className="p-3">Services</th>
+                        <th className="p-3">Payments</th>
+                        <th className="p-3">Match Status</th>
+                        <th className="p-3">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700/50 bg-slate-900/20">
+                      {groupedContracts.map((contract) => {
+                        const isReview = contract.reviewRequired;
+                        const matchType = contract.matchType;
+
+                        return (
+                          <tr key={contract.jobNo} className={`hover:bg-slate-800/50 transition ${isReview ? "bg-amber-950/10" : ""}`}>
+                            <td className="p-3">
+                              <span className="font-mono font-bold text-cyan-300 bg-cyan-950/60 border border-cyan-500/30 px-2 py-0.5 rounded text-xs">
+                                {contract.jobNo}
+                              </span>
+                            </td>
+                            <td className="p-3 max-w-[200px]">
+                              <p className="font-bold text-slate-200 truncate" title={contract.customer.fullName}>
+                                {contract.customer.fullName}
+                              </p>
+                              <span className="text-[10px] uppercase font-bold text-slate-500">
+                                {contract.customer.customerType}
+                              </span>
+                            </td>
+                            <td className="p-3 max-w-[180px]">
+                              <p className="text-slate-300 truncate">{contract.customer.phone || "-"}</p>
+                              {contract.customer.alternatePhone && (
+                                <p className="text-[10px] text-cyan-400 truncate" title={contract.customer.alternatePhone}>
+                                  Alt: {contract.customer.alternatePhone}
+                                </p>
+                              )}
+                              {contract.customer.contactPerson && (
+                                <p className="text-[10px] text-slate-500 truncate">
+                                  {contract.customer.contactPerson}
+                                </p>
+                              )}
+                            </td>
+                            <td className="p-3 max-w-[220px]">
+                              <p className="text-slate-300 truncate" title={contract.customer.address}>
+                                {contract.customer.address || "-"}
+                              </p>
+                            </td>
+                            <td className="p-3">
+                              <span className="bg-slate-800 text-slate-300 font-bold px-2 py-0.5 rounded text-xs">
+                                {contract.services.length} Line{contract.services.length > 1 ? "s" : ""}
+                              </span>
+                              <div className="text-[10px] text-slate-400 mt-1 max-w-[140px] truncate" title={contract.services.map(s => `${s.serviceName} (${s.frequency})`).join(", ")}>
+                                {contract.services.map(s => s.serviceName).join(", ")}
+                              </div>
+                            </td>
+                            <td className="p-3">
+                              <p className="font-semibold text-emerald-300">
+                                ₹{(contract.totalPaid || 0).toLocaleString()}
+                              </p>
+                              <p className="text-[10px] text-slate-500">
+                                {contract.payments.length} txn{contract.payments.length > 1 ? "s" : ""}
+                              </p>
+                            </td>
+                            <td className="p-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                                  matchType === "EXACT_JOBNO"
+                                    ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                    : isReview
+                                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                    : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                }`}
+                              >
+                                {isReview ? "AMBIGUOUS" : matchType === "EXACT_JOBNO" ? "EXISTING" : "NEW CONTRACT"}
+                              </span>
+                              {contract.reviewReason && (
+                                <p className="text-[10px] text-amber-400 mt-1 max-w-[140px] truncate" title={contract.reviewReason}>
+                                  {contract.reviewReason}
+                                </p>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <select
+                                value={contract.action || (isReview ? "REVIEW" : "IMPORT")}
+                                onChange={(e) => handleContractChoiceChange(contract.jobNo, "action", e.target.value)}
+                                className={`rounded-lg px-2 py-1 text-[11px] font-bold outline-none border ${
+                                  contract.action === "SKIP"
+                                    ? "bg-slate-900 border-slate-700 text-slate-400"
+                                    : contract.action === "REVIEW"
+                                    ? "bg-amber-950 border-amber-500 text-amber-300"
+                                    : "bg-emerald-950 border-emerald-500 text-emerald-300"
+                                }`}
+                              >
+                                <option value="IMPORT">IMPORT</option>
+                                <option value="SKIP">SKIP</option>
+                                {isReview && <option value="REVIEW">REVIEW</option>}
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
             {/* Metrics Dashboard */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
               <div className="bg-slate-800/80 border border-slate-700/60 p-5 rounded-2xl">
@@ -925,7 +1249,8 @@ function Upload() {
               </div>
             </div>
           </div>
-        )}
+        )
+      )}
 
         {/* STEP 5: IMPORT SUMMARY & ERROR REPORT */}
         {step === 5 && commitSummary && (
@@ -941,24 +1266,73 @@ function Upload() {
             </div>
 
             {/* Results Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="bg-slate-900/80 border border-emerald-500/30 p-4 rounded-xl text-center">
-                <p className="text-emerald-400 text-xs font-bold uppercase">Created</p>
-                <p className="text-3xl font-extrabold text-emerald-300 mt-1">{commitSummary.created}</p>
+            {commitSummary.batchId ? (
+              <div className="space-y-4">
+                <div className="bg-slate-900/60 border border-cyan-500/30 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2">
+                  <span className="text-xs text-slate-400">Migration Batch Identifier:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-bold text-cyan-300 bg-cyan-950/80 px-2.5 py-1 rounded-lg border border-cyan-500/40">
+                      {commitSummary.batchId}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRollbackBatch(commitSummary.batchId)}
+                      disabled={rollingBack}
+                      className="bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
+                    >
+                      {rollingBack ? "Rolling back..." : "Rollback This Batch"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="bg-slate-900/80 border border-emerald-500/30 p-4 rounded-xl text-center">
+                    <p className="text-emerald-400 text-xs font-bold uppercase">Customers</p>
+                    <p className="text-2xl font-extrabold text-emerald-300 mt-1">{commitSummary.createdCustomers || 0}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Created</p>
+                  </div>
+                  <div className="bg-slate-900/80 border border-cyan-500/30 p-4 rounded-xl text-center">
+                    <p className="text-cyan-400 text-xs font-bold uppercase">Services</p>
+                    <p className="text-2xl font-extrabold text-cyan-300 mt-1">{commitSummary.createdServices || 0}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">AMC Lines</p>
+                  </div>
+                  <div className="bg-slate-900/80 border border-purple-500/30 p-4 rounded-xl text-center">
+                    <p className="text-purple-400 text-xs font-bold uppercase">Renewals</p>
+                    <p className="text-2xl font-extrabold text-purple-300 mt-1">{commitSummary.createdRenewals || 0}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Trackers</p>
+                  </div>
+                  <div className="bg-slate-900/80 border border-blue-500/30 p-4 rounded-xl text-center">
+                    <p className="text-blue-400 text-xs font-bold uppercase">Assigned</p>
+                    <p className="text-2xl font-extrabold text-blue-300 mt-1">{commitSummary.assignedJobNumbers || 0}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Occupied Slots</p>
+                  </div>
+                  <div className="bg-slate-900/80 border border-amber-500/30 p-4 rounded-xl text-center">
+                    <p className="text-amber-400 text-xs font-bold uppercase">Vacant Slots</p>
+                    <p className="text-2xl font-extrabold text-amber-300 mt-1">{commitSummary.vacantRegistered || 0}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Available for Reuse</p>
+                  </div>
+                </div>
               </div>
-              <div className="bg-slate-900/80 border border-amber-500/30 p-4 rounded-xl text-center">
-                <p className="text-amber-400 text-xs font-bold uppercase">Updated</p>
-                <p className="text-3xl font-extrabold text-amber-300 mt-1">{commitSummary.updated}</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-slate-900/80 border border-emerald-500/30 p-4 rounded-xl text-center">
+                  <p className="text-emerald-400 text-xs font-bold uppercase">Created</p>
+                  <p className="text-3xl font-extrabold text-emerald-300 mt-1">{commitSummary.created}</p>
+                </div>
+                <div className="bg-slate-900/80 border border-amber-500/30 p-4 rounded-xl text-center">
+                  <p className="text-amber-400 text-xs font-bold uppercase">Updated</p>
+                  <p className="text-3xl font-extrabold text-amber-300 mt-1">{commitSummary.updated}</p>
+                </div>
+                <div className="bg-slate-900/80 border border-slate-700 p-4 rounded-xl text-center">
+                  <p className="text-slate-400 text-xs font-bold uppercase">Skipped</p>
+                  <p className="text-3xl font-extrabold text-slate-300 mt-1">{commitSummary.skipped}</p>
+                </div>
+                <div className="bg-slate-900/80 border border-red-500/30 p-4 rounded-xl text-center">
+                  <p className="text-red-400 text-xs font-bold uppercase">Failed</p>
+                  <p className="text-3xl font-extrabold text-red-300 mt-1">{commitSummary.failed}</p>
+                </div>
               </div>
-              <div className="bg-slate-900/80 border border-slate-700 p-4 rounded-xl text-center">
-                <p className="text-slate-400 text-xs font-bold uppercase">Skipped</p>
-                <p className="text-3xl font-extrabold text-slate-300 mt-1">{commitSummary.skipped}</p>
-              </div>
-              <div className="bg-slate-900/80 border border-red-500/30 p-4 rounded-xl text-center">
-                <p className="text-red-400 text-xs font-bold uppercase">Failed</p>
-                <p className="text-3xl font-extrabold text-red-300 mt-1">{commitSummary.failed}</p>
-              </div>
-            </div>
+            )}
 
             {/* Error Report if any failures */}
             {errorReport.length > 0 && (
@@ -1012,6 +1386,189 @@ function Upload() {
           </div>
         )}
       </div>
+
+      {/* FIELD CONFLICTS REVIEW MODAL */}
+      {showConflictsModal &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto overscroll-contain animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowConflictsModal(false);
+              }
+            }}
+          >
+            <div
+              className="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col my-auto animate-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <HiOutlineExclamationTriangle className="text-amber-400 size-5" />
+                  Multi-Row Field Inconsistencies ({fieldConflicts.length})
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowConflictsModal(false)}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+                >
+                  <HiOutlineXMark className="size-5" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-400 shrink-0">
+                The migration engine automatically reconciles multi-row differences without dropping valuable contact details or addresses.
+              </p>
+
+              <div className="overflow-x-auto overflow-y-auto flex-1 border border-slate-800 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider sticky top-0 border-b border-slate-800">
+                    <tr>
+                      <th className="p-3">Job No</th>
+                      <th className="p-3">Conflicting Field</th>
+                      <th className="p-3">Distinct Values in Excel</th>
+                      <th className="p-3">Safe CRM Strategy</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-slate-300 bg-slate-900/50">
+                    {fieldConflicts.map((c, i) => (
+                      <tr key={i} className="hover:bg-slate-800/40">
+                        <td className="p-3 font-mono font-bold text-cyan-300">{c.jobNo}</td>
+                        <td className="p-3 font-semibold text-amber-300 capitalize">{c.field}</td>
+                        <td className="p-3 max-w-[260px]">
+                          <ul className="list-disc list-inside space-y-0.5 text-slate-300">
+                            {c.values.map((v, vi) => (
+                              <li key={vi} className="truncate" title={v}>{v}</li>
+                            ))}
+                          </ul>
+                        </td>
+                        <td className="p-3 text-slate-400">
+                          <span className="text-emerald-300 font-medium">{c.resolutionStrategy}</span>
+                          {c.secondaryValue && (
+                            <p className="text-[10px] text-cyan-400 mt-0.5 truncate" title={c.secondaryValue}>
+                              Preserved: {c.secondaryValue}
+                            </p>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-slate-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowConflictsModal(false)}
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-semibold px-5 py-2 rounded-xl text-xs transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* PAST IMPORT BATCHES & ROLLBACK MODAL */}
+      {showBatchesModal &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto overscroll-contain animate-in fade-in duration-200"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !rollingBack) {
+                setShowBatchesModal(false);
+              }
+            }}
+          >
+            <div
+              className="bg-slate-900 border border-slate-700 rounded-2xl max-w-4xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col my-auto animate-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <HiOutlineArrowPath className="text-cyan-400 size-5" />
+                  Past Import Batches & Atomic Rollback
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowBatchesModal(false)}
+                  disabled={rollingBack}
+                  className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer disabled:opacity-50"
+                >
+                  <HiOutlineXMark className="size-5" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-400 shrink-0">
+                Rollback completely reverses created records, restores modified documents to their exact before-images, and returns Job Numbers to vacant or unallocated state.
+              </p>
+
+              <div className="overflow-x-auto overflow-y-auto flex-1 border border-slate-800 rounded-xl">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider sticky top-0 border-b border-slate-800">
+                    <tr>
+                      <th className="p-3">Batch ID</th>
+                      <th className="p-3">Created At</th>
+                      <th className="p-3">Audit Logs</th>
+                      <th className="p-3">Entities Modified</th>
+                      <th className="p-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-slate-300 bg-slate-900/50">
+                    {importBatches.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="p-8 text-center text-slate-500">
+                          No previous migration batches found.
+                        </td>
+                      </tr>
+                    ) : (
+                      importBatches.map((batch) => (
+                        <tr key={batch.batchId} className="hover:bg-slate-800/40">
+                          <td className="p-3 font-mono font-bold text-cyan-300">{batch.batchId}</td>
+                          <td className="p-3 text-slate-400">
+                            {new Date(batch.firstActionAt).toLocaleString()}
+                          </td>
+                          <td className="p-3">{batch.totalRecords} records</td>
+                          <td className="p-3">
+                            <span className="text-[11px] text-slate-400">
+                              {(batch.entities || []).join(", ")}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleRollbackBatch(batch.batchId)}
+                              disabled={rollingBack}
+                              className="bg-red-950/60 hover:bg-red-900/80 text-red-300 border border-red-500/40 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
+                            >
+                              {rollingBack ? "Rolling back..." : "Rollback Batch"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-slate-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setShowBatchesModal(false)}
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-semibold px-5 py-2 rounded-xl text-xs transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

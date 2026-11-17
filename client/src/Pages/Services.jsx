@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchServices } from "../slices/serviceSlice";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import CreateServiceModal from "../Components/CreateServiceModel";
 import { fetchCustomers } from "../slices/customerSlice";
 import { fetchEmployees } from "../slices/employeeSlice";
@@ -16,16 +16,25 @@ import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
 
-function Services() {
+function Services({ isOneTimePage = false }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isOneTimeView = isOneTimePage || location.pathname === "/one-time-jobs";
 
   const { services, loading, error } = useSelector((state) => state.services);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [frequencyFilter, setFrequencyFilter] = useState("all");
+  const [frequencyFilter, setFrequencyFilter] = useState(
+    isOneTimeView ? "one-time" : "all"
+  );
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  useEffect(() => {
+    setFrequencyFilter(isOneTimeView ? "one-time" : "all");
+  }, [isOneTimeView]);
 
   useEffect(() => {
     dispatch(fetchServices());
@@ -35,11 +44,15 @@ function Services() {
 
   const serviceList = Array.isArray(services) ? services : [];
 
-  const dueCount = serviceList.filter((service) => {
+  const relevantServices = isOneTimeView
+    ? serviceList.filter((s) => normalizeFrequency(s.frequency) === "one-time")
+    : serviceList;
+
+  const dueCount = relevantServices.filter((service) => {
     return service.status === "due";
   }).length;
 
-  const completedCount = serviceList.filter((service) => {
+  const completedCount = relevantServices.filter((service) => {
     return service.status === "completed";
   }).length;
 
@@ -103,16 +116,27 @@ function Services() {
     <div className="min-h-screen bg-[#f5f7fb] p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Services</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-3xl font-bold text-slate-900">
+              {isOneTimeView ? "One Time Jobs" : "Services"}
+            </h1>
+            {isOneTimeView && (
+              <span className="text-xs bg-amber-100 text-amber-900 font-bold px-3 py-1 rounded-full border border-amber-200">
+                Viewing: One Time Job
+              </span>
+            )}
+          </div>
           <p className="text-slate-500 mt-1">
-            Manage and track services and schedules
+            {isOneTimeView
+              ? "Manage and track One Time Job services, service papers, and payment tracking"
+              : "Manage and track services and schedules"}
           </p>
         </div>
         <button
-          className="bg-blue-800/80 text-white hover:bg-blue-600 px-5 py-2.5 rounded-lg flex items-center gap-2 self-start sm:self-auto"
+          className="bg-blue-800/80 text-white hover:bg-blue-600 px-5 py-2.5 rounded-lg flex items-center gap-2 self-start sm:self-auto cursor-pointer transition shadow-sm"
           onClick={() => setShowCreateModal(true)}
         >
-          <FaPlus /> Add Service
+          <FaPlus /> {isOneTimeView ? "Add One Time Job" : "Add Service"}
         </button>
       </div>
 
@@ -121,8 +145,8 @@ function Services() {
         {[
           {
             key: "all",
-            label: "All Services",
-            count: serviceList.length,
+            label: isOneTimeView ? "All One Time Jobs" : "All Services",
+            count: relevantServices.length,
             color: "text-slate-900",
             background: "bg-slate-50 border-slate-100",
             onClick: () => setStatusFilter("all"),
@@ -325,7 +349,10 @@ function Services() {
       </DataTable>
 
       {showCreateModal && (
-        <CreateServiceModal onClose={() => setShowCreateModal(false)} />
+        <CreateServiceModal
+          onClose={() => setShowCreateModal(false)}
+          initialFrequency={isOneTimeView ? "one-time" : "monthly"}
+        />
       )}
     </div>
   );

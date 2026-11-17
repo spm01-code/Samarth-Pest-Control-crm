@@ -35,6 +35,18 @@ const invoiceSchema = new mongoose.Schema(
       required: true,
     },
 
+    customerSnapshot: {
+      jobNo: { type: String, trim: true },
+      fullName: { type: String, trim: true },
+      companyName: { type: String, trim: true },
+      address: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      email: { type: String, trim: true },
+      gstNumber: { type: String, trim: true },
+      contactPerson: { type: String, trim: true },
+      snapshotTakenAt: { type: Date, default: Date.now },
+    },
+
     billingPeriod: {
       type: String,
       trim: true,
@@ -296,6 +308,13 @@ const invoiceSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",
       required: false,
+    },
+
+    importMeta: {
+      batchId: { type: String, index: true },
+      sourceJobNo: { type: String, trim: true },
+      sourceRows: [{ type: Number }],
+      importedAt: { type: Date },
     },
   },
   {

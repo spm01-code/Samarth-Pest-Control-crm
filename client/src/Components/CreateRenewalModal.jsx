@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchCustomers } from "../slices/customerSlice";
 import { createRenewal, updateRenewal, fetchRenewals } from "../slices/renewalSlice";
@@ -6,6 +7,7 @@ import { fetchCompanySettingsAPI } from "../API/companySettingAPI";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateForInput } from "../utils/dateUtils";
+import { useScrollLock } from "../hooks/useScrollLock";
 
 const today = () => new Date().toLocaleDateString("en-CA");
 
@@ -18,6 +20,7 @@ const emptyService = () => ({
 });
 
 function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated }) {
+  useScrollLock(isOpen);
   const dispatch = useDispatch();
   const { customers = [] } = useSelector((state) => state.customer);
 
@@ -210,9 +213,21 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="w-full max-w-4xl rounded-xl bg-white p-6 shadow-lg max-h-[90vh] overflow-y-auto">
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto overscroll-contain animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !submitting) {
+          close();
+        }
+      }}
+    >
+      <div
+        className="w-full max-w-4xl rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto my-auto animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-2xl font-bold">
             {initialRenewal ? "Edit Contract Renewal" : "Create Contract Renewal"}
@@ -467,7 +482,8 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

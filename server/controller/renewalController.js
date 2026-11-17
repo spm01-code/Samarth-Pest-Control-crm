@@ -173,6 +173,17 @@ export const createRenewal = async (req, res) => {
       renewalNumber,
       renewalDate: renewalDateVal,
       customer: customer._id,
+      customerSnapshot: {
+        jobNo: customer.jobNo || customer.archivedJobNo || "",
+        fullName: customer.fullName || "",
+        companyName: customer.companyName || "",
+        address: customer.address || "",
+        phone: customer.phone || "",
+        email: customer.email || "",
+        gstNumber: customer.gstNumber || "",
+        contactPerson: customer.contactPerson || "",
+        snapshotTakenAt: new Date(),
+      },
       services,
       contractStartDate,
       contractEndDate,
@@ -180,7 +191,9 @@ export const createRenewal = async (req, res) => {
       subtotal,
       totalTax: 0,
       totalAmount,
-      amountInWords: customAmountInWords || `Rupees ${numberToWords(totalAmount)} Only`,
+      amountInWords: customAmountInWords
+        ? customAmountInWords.trim()
+        : (numberToWords(totalAmount) ? `RUPEES ${numberToWords(totalAmount).toUpperCase()} ONLY` : ""),
       paymentTerm: paymentTerm || "Quarterly.",
       notes,
       status: status || "Draft",
@@ -237,7 +250,7 @@ export const updateRenewal = async (req, res) => {
       const subtotal = updateData.services.reduce((sum, s) => sum + Number(s.amount || 0), 0);
       updateData.subtotal = subtotal;
       updateData.totalAmount = subtotal;
-      updateData.amountInWords = `Rupees ${numberToWords(subtotal)} Only`;
+      updateData.amountInWords = numberToWords(subtotal) ? `RUPEES ${numberToWords(subtotal).toUpperCase()} ONLY` : "";
     }
 
     if (updateData.renewalDate) {
@@ -292,6 +305,14 @@ export const generateRenewalDocx = async (req, res) => {
       renewal.renewalNumber ||
       `renewal-${renewal._id}`;
 
+    if (result.isPdfDirect) {
+      const fileName = `${renewalNumber}.pdf`;
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.setHeader("Content-Length", result.buffer.length);
+      return res.send(result.buffer);
+    }
+
     const fileName = `${renewalNumber}.docx`;
 
     res.setHeader(
@@ -307,7 +328,7 @@ export const generateRenewalDocx = async (req, res) => {
   } catch (error) {
     console.error("Generate contract renewal DOCX error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });
@@ -326,7 +347,9 @@ export const generateRenewalPdf = async (req, res) => {
     }
 
     const docxResult = await generateContractRenewalDocx(renewal);
-    const pdfBuffer = await convertDocxToPdf(docxResult.buffer);
+    const pdfBuffer = docxResult.isPdfDirect
+      ? docxResult.buffer
+      : await convertDocxToPdf(docxResult.buffer);
 
     const renewalNumber =
       renewal.renewalNumber ||
@@ -342,7 +365,7 @@ export const generateRenewalPdf = async (req, res) => {
   } catch (error) {
     console.error("Generate contract renewal PDF error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });

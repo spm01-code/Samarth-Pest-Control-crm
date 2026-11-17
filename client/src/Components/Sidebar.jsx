@@ -7,6 +7,7 @@ import {
   HiOutlineBriefcase,
   HiOutlineChevronDown,
   HiOutlineChevronRight,
+  HiOutlineClipboardDocumentCheck,
   HiOutlineDocumentText,
   HiOutlineHomeModern,
   HiOutlineUserGroup,
@@ -25,6 +26,7 @@ const sections = [
     items: [
       { name: "Customers", path: "/", icon: HiOutlineUsers, end: true },
       { name: "Services", path: "/services", icon: HiOutlineWrenchScrewdriver },
+      { name: "One Time Job", path: "/one-time-jobs", icon: HiOutlineClipboardDocumentCheck },
     ],
   },
   {

@@ -198,12 +198,20 @@ function ChangePasswordModal({ isOpen, onClose }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center z-50 p-4 sm:p-6"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center z-50 p-4 sm:p-6 overflow-y-auto overscroll-contain animate-in fade-in duration-200"
       role="dialog"
       aria-modal="true"
       aria-labelledby="change-password-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isLoading) {
+          handleClose();
+        }
+      }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 sm:p-8 relative border border-slate-100">
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 sm:p-8 relative border border-slate-100 my-auto animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Close button */}
         <button
           type="button"

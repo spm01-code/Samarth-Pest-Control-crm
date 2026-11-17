@@ -86,3 +86,41 @@ export const commitImportSession = async (data, token) => {
 
   return safeParseResponse(res, "Commit failed");
 };
+
+// 6. Rollback Import Batch
+export const rollbackImportBatch = async (batchId, token) => {
+  const res = await fetch(`${BASE_URL}/import/rollback`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ batchId }),
+  });
+
+  return safeParseResponse(res, "Rollback failed");
+};
+
+// 7. Trigger Pre-Migration Backup
+export const triggerImportBackup = async (token) => {
+  const res = await fetch(`${BASE_URL}/import/backup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return safeParseResponse(res, "Backup failed");
+};
+
+// 8. Get Past Import Batches
+export const getImportBatches = async (token) => {
+  const res = await fetch(`${BASE_URL}/import/batches`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return safeParseResponse(res, "Failed to fetch import batches");
+};

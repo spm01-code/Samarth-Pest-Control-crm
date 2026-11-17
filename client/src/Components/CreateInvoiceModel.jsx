@@ -8,6 +8,7 @@ import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { fetchCompanySettingsAPI } from "../API/companySettingAPI";
 import ServiceSelectDropdown from "./ServiceSelectDropdown";
+import { useScrollLock } from "../hooks/useScrollLock";
 
 function CreateInvoiceModal({
   isOpen,
@@ -16,11 +17,17 @@ function CreateInvoiceModal({
   initialService = null,
   onCreated,
 }) {
+  useScrollLock(isOpen);
   const dispatch = useDispatch();
   const [showCustomers, setShowCustomers] = useState(false);
 
   const activeCustomer = initialCustomer || initialService?.customer;
-  const initialCustName = typeof activeCustomer === "object" ? activeCustomer?.fullName : "";
+  const initialCustName =
+    (typeof activeCustomer === "object" && (activeCustomer?.fullName || activeCustomer?.customerName)) ||
+    initialService?.customerSnapshot?.fullName ||
+    initialService?.customerSnapshot?.customerName ||
+    initialService?.customerName ||
+    "";
   const initialCustId = typeof activeCustomer === "object" ? activeCustomer?._id : activeCustomer || "";
 
   const [customerSearch, setCustomerSearch] = useState(initialCustName);
@@ -66,7 +73,12 @@ function CreateInvoiceModal({
 
       const currentCustomer = initialCustomer || initialService?.customer;
       const custId = typeof currentCustomer === "object" ? currentCustomer?._id : currentCustomer || "";
-      const custName = typeof currentCustomer === "object" ? currentCustomer?.fullName : "";
+      const custName =
+        (typeof currentCustomer === "object" && (currentCustomer?.fullName || currentCustomer?.customerName)) ||
+        initialService?.customerSnapshot?.fullName ||
+        initialService?.customerSnapshot?.customerName ||
+        initialService?.customerName ||
+        "";
 
       if (custName) {
         setCustomerSearch(custName);
@@ -183,6 +195,13 @@ function CreateInvoiceModal({
   const subtotal = existingSubtotal + customSubtotal;
 
   const isGstInvoice = formData.invoiceType === "GST";
+  const currentYear = new Date().getFullYear();
+  const currentMonth = new Date().getMonth();
+  const fyStart = currentMonth >= 3 ? currentYear : currentYear - 1;
+  const currentFY = `${fyStart}-${fyStart + 1}`;
+  const seriesPreview = isGstInvoice
+    ? `SPM/${currentFY}/01`
+    : `SPMJ/${currentFY}/01`;
   const isInterState = isGstInvoice && formData.taxMode === "INTER_STATE";
   const cgst = isGstInvoice && !isInterState ? (subtotal * Number(formData.cgstPercentage || 0)) / 100 : 0;
   const sgst = isGstInvoice && !isInterState ? (subtotal * Number(formData.sgstPercentage || 0)) / 100 : 0;
@@ -325,7 +344,7 @@ function CreateInvoiceModal({
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold">Create Invoice</h2>
             <span className="text-xs bg-blue-50 text-blue-700 font-bold px-2.5 py-1 rounded-full font-mono">
-              Series: {isGstInvoice ? "SPMJ/2026-2027/01" : "SPM/2026-2027/0001"}
+              Series: {seriesPreview}
             </span>
           </div>
 
@@ -363,7 +382,7 @@ function CreateInvoiceModal({
                 setShowCustomers(value.trim() !== "");
               }}
               className="w-full border rounded-xl p-3"
-              disabled={Boolean(initialCustomer || initialService)}
+              disabled={Boolean(initialCustomer || (initialService && initialCustId))}
               required
             />
 

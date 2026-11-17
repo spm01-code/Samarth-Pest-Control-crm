@@ -1,4 +1,6 @@
+import mongoose from "mongoose";
 import Quotation from "../model/quotationModel.js";
+import Customer from "../model/customerModel.js";
 import CompanySetting from "../model/companySettingModel.js";
 
 import { generateQuotationDocx as generateQuotationDocxFile } from "../utils/docGenerator.js";
@@ -40,9 +42,70 @@ export const createQuotation = async (req, res) => {
       );
     }
 
+    let customerSnapshot = undefined;
+    const bodyCopy = { ...req.body };
+
+    if (bodyCopy.customer && mongoose.Types.ObjectId.isValid(bodyCopy.customer)) {
+      const cust = await Customer.findById(bodyCopy.customer).lean();
+      if (cust) {
+        bodyCopy.customer = cust._id;
+        customerSnapshot = {
+          jobNo: cust.jobNo || cust.archivedJobNo || "",
+          fullName: cust.fullName || "",
+          companyName: cust.companyName || "",
+          customerName: cust.fullName || cust.companyName || "",
+          address: cust.address || bodyCopy.premises || "",
+          phone: cust.phone || "",
+          email: cust.email || "",
+          gstNumber: cust.gstNumber || "",
+          contactPerson: cust.contactPerson || "",
+          snapshotTakenAt: new Date(),
+        };
+      } else {
+        delete bodyCopy.customer;
+      }
+    } else {
+      delete bodyCopy.customer;
+    }
+
+    // If no existing customer reference, construct manual customer snapshot
+    if (!customerSnapshot) {
+      const snapInput = bodyCopy.customerSnapshot || {};
+      const custName = (
+        snapInput.fullName ||
+        snapInput.customerName ||
+        snapInput.companyName ||
+        bodyCopy.customerName ||
+        bodyCopy.fullName ||
+        bodyCopy.companyName ||
+        ""
+      ).trim();
+
+      if (!custName) {
+        return res.status(400).json({
+          success: false,
+          message: "Customer name is required for quotation.",
+        });
+      }
+
+      customerSnapshot = {
+        jobNo: snapInput.jobNo || "",
+        fullName: custName,
+        customerName: custName,
+        companyName: snapInput.companyName || bodyCopy.companyName || "",
+        address: snapInput.address || bodyCopy.address || bodyCopy.premises || "",
+        phone: snapInput.phone || bodyCopy.phone || "",
+        email: snapInput.email || bodyCopy.email || "",
+        gstNumber: snapInput.gstNumber || bodyCopy.gstNumber || "",
+        contactPerson: snapInput.contactPerson || bodyCopy.contactPerson || "",
+        snapshotTakenAt: new Date(),
+      };
+    }
+
     const quotation = await Quotation.create({
-      ...req.body,
+      ...bodyCopy,
       ...(totalAmount !== undefined && totalAmount !== null ? { totalAmount } : {}),
+      customerSnapshot,
       quotationType,
       quotationNumber,
     });
@@ -59,7 +122,7 @@ export const createQuotation = async (req, res) => {
   } catch (error) {
     console.error("Create quotation error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });
@@ -83,7 +146,7 @@ export const getQuotations = async (req, res) => {
   } catch (error) {
     console.error("Get quotations error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });
@@ -114,7 +177,7 @@ export const getQuotation = async (req, res) => {
   } catch (error) {
     console.error("Get quotation error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });
@@ -140,7 +203,7 @@ export const getCustomerQuotations = async (req, res) => {
   } catch (error) {
     console.error("Get customer quotations error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });
@@ -162,6 +225,70 @@ export const updateQuotation = async (req, res) => {
         (sum, s) => sum + (Number(s.cost ?? s.amount) || 0),
         0
       );
+    }
+
+    const existingQuotation = await Quotation.findById(req.params.id);
+    if (!existingQuotation) {
+      return res.status(404).json({
+        success: false,
+        message: "Quotation not found.",
+      });
+    }
+
+    // Handle customer reference and customerSnapshot
+    if (updateData.customer && mongoose.Types.ObjectId.isValid(updateData.customer)) {
+      const cust = await Customer.findById(updateData.customer).lean();
+      if (cust) {
+        updateData.customer = cust._id;
+        updateData.customerSnapshot = {
+          jobNo: cust.jobNo || cust.archivedJobNo || "",
+          fullName: cust.fullName || "",
+          companyName: cust.companyName || "",
+          customerName: cust.fullName || cust.companyName || "",
+          address: cust.address || updateData.premises || existingQuotation.premises || "",
+          phone: cust.phone || "",
+          email: cust.email || "",
+          gstNumber: cust.gstNumber || "",
+          contactPerson: cust.contactPerson || "",
+          snapshotTakenAt: new Date(),
+        };
+      } else {
+        updateData.customer = null;
+      }
+    } else if (updateData.customer === "" || updateData.customer === null) {
+      updateData.customer = null;
+      const snapInput = updateData.customerSnapshot || {};
+      const existingSnap = existingQuotation.customerSnapshot || {};
+      const custName = (
+        snapInput.fullName ||
+        snapInput.customerName ||
+        snapInput.companyName ||
+        updateData.customerName ||
+        existingSnap.fullName ||
+        existingSnap.companyName ||
+        ""
+      ).trim();
+
+      updateData.customerSnapshot = {
+        ...existingSnap,
+        ...snapInput,
+        fullName: custName || existingSnap.fullName || "",
+        customerName: custName || existingSnap.customerName || "",
+        companyName: snapInput.companyName !== undefined ? snapInput.companyName : (existingSnap.companyName || ""),
+        address: snapInput.address !== undefined ? snapInput.address : (updateData.premises || existingSnap.address || ""),
+        phone: snapInput.phone !== undefined ? snapInput.phone : (existingSnap.phone || ""),
+        email: snapInput.email !== undefined ? snapInput.email : (existingSnap.email || ""),
+        gstNumber: snapInput.gstNumber !== undefined ? snapInput.gstNumber : (existingSnap.gstNumber || ""),
+        contactPerson: snapInput.contactPerson !== undefined ? snapInput.contactPerson : (existingSnap.contactPerson || ""),
+        snapshotTakenAt: new Date(),
+      };
+    } else if (updateData.customerSnapshot) {
+      const existingSnap = existingQuotation.customerSnapshot || {};
+      updateData.customerSnapshot = {
+        ...existingSnap,
+        ...updateData.customerSnapshot,
+        snapshotTakenAt: new Date(),
+      };
     }
 
     const updatedQuotation = await Quotation.findByIdAndUpdate(
@@ -192,7 +319,7 @@ export const updateQuotation = async (req, res) => {
   } catch (error) {
     console.error("Update quotation error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });
@@ -223,7 +350,7 @@ export const deleteQuotation = async (req, res) => {
   } catch (error) {
     console.error("Delete quotation error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });
@@ -297,7 +424,7 @@ export const generateQuotationDocx = async (req, res) => {
   } catch (error) {
     console.error("Generate quotation DOCX error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });
@@ -344,7 +471,7 @@ export const generateQuotationPdf = async (req, res) => {
   } catch (error) {
     console.error("Generate quotation PDF error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message,
     });

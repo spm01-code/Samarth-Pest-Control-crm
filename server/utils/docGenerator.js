@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import mongoose from "mongoose";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 
@@ -11,29 +12,100 @@ import { generatePdfFromPdfTemplate } from "./pdfTemplateGenerator.js";
 // HELPERS
 // ============================================================
 
-const formatDate = (date) => {
-  if (!date) return "";
+export const normalizeDate = (val) => {
+  if (val === null || val === undefined || val === "") return null;
 
-  let dVal = date;
-  if (typeof dVal === "number" && dVal > 10000 && dVal < 100000) {
-    dVal = new Date(Math.round((dVal - 25569) * 86400 * 1000));
-  } else if (typeof dVal === "string" && /^\d+(\.\d+)?$/.test(dVal.trim())) {
-    const num = parseFloat(dVal.trim());
-    if (num > 10000 && num < 100000) {
-      dVal = new Date(Math.round((num - 25569) * 86400 * 1000));
+  // If already a Date object
+  if (val instanceof Date) {
+    if (Number.isNaN(val.getTime())) return null;
+    const y = val.getFullYear();
+    // If Excel serial number was stored directly as year in Date (e.g. year = 46265)
+    if (y >= 10000 && y <= 99999) {
+      const recovered = new Date(Math.round((y - 25569) * 86400 * 1000));
+      return Number.isNaN(recovered.getTime()) ? null : recovered;
+    }
+    if (y >= 1970 && y <= 2100) return val;
+    return null;
+  }
+
+  // If number
+  if (typeof val === "number") {
+    if (Number.isNaN(val)) return null;
+    // Excel serial date (e.g. 46265)
+    if (val >= 10000 && val <= 99999) {
+      const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    // Unix timestamp in ms
+    if (val > 99999) {
+      const d = new Date(val);
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+  }
+
+  // If string
+  if (typeof val === "string") {
+    const s = val.trim();
+    if (!s) return null;
+
+    // Numeric Excel serial string e.g. "46265" or "46265.0"
+    if (/^\d+(\.\d+)?$/.test(s)) {
+      const num = parseFloat(s);
+      if (num >= 10000 && num <= 99999) {
+        const d = new Date(Math.round((num - 25569) * 86400 * 1000));
+        if (!Number.isNaN(d.getTime())) return d;
+      }
+    }
+
+    // Month-Year format like "SEP--26", "AUG--25", "OCT--26", "JAN--27", "FEB-26", "JUL--26"
+    const monthYearMatch = s.match(/^([a-zA-Z]{3,})[\s\-]+(\d{2,4})$/);
+    if (monthYearMatch) {
+      const monthStr = monthYearMatch[1].toUpperCase();
+      const yearVal = parseInt(monthYearMatch[2], 10);
+      const fullYear = yearVal < 100 ? 2000 + yearVal : yearVal;
+      const monthMap = {
+        JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5,
+        JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11,
+      };
+      const monthIdx = monthMap[monthStr.substring(0, 3)];
+      if (monthIdx !== undefined) {
+        const lastDay = new Date(Date.UTC(fullYear, monthIdx + 1, 0)).getUTCDate();
+        return new Date(Date.UTC(fullYear, monthIdx, lastDay, 12, 0, 0));
+      }
+    }
+
+    // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+    const dmy = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+    if (dmy) {
+      const day = parseInt(dmy[1], 10);
+      const month = parseInt(dmy[2], 10) - 1;
+      let year = parseInt(dmy[3], 10);
+      if (year < 100) year += 2000;
+      if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+        const d = new Date(Date.UTC(year, month, day, 12, 0, 0));
+        if (!Number.isNaN(d.getTime())) return d;
+      }
+    }
+
+    // ISO string or standard parseable string
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) {
+      const y = d.getFullYear();
+      if (y >= 10000 && y <= 99999) {
+        const recovered = new Date(Math.round((y - 25569) * 86400 * 1000));
+        return Number.isNaN(recovered.getTime()) ? null : recovered;
+      }
+      if (y >= 1970 && y <= 2100) return d;
     }
   }
 
-  const parsedDate = new Date(dVal);
+  return null;
+};
 
-  if (Number.isNaN(parsedDate.getTime())) {
-    return "";
-  }
-
-  const year = parsedDate.getFullYear();
-  if (year > 2100 || year < 1970) {
-    return "";
-  }
+export const formatDate = (date) => {
+  const parsedDate = normalizeDate(date);
+  if (!parsedDate) return "";
 
   return new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
@@ -102,28 +174,164 @@ const firstNonPlaceholderValue = (...values) => {
   return "";
 };
 
+const BILLING_MONTH_BY_INDEX = [
+  "JAN",
+  "FEB",
+  "MAR",
+  "APR",
+  "MAY",
+  "JUN",
+  "JUL",
+  "AUG",
+  "SEPT",
+  "OCT",
+  "NOV",
+  "DEC",
+];
+
+const BILLING_MONTH_MAP = {
+  1: "JAN", JAN: "JAN", JANUARY: "JAN",
+  2: "FEB", FEB: "FEB", FEBRUARY: "FEB",
+  3: "MAR", MAR: "MAR", MARCH: "MAR",
+  4: "APR", APR: "APR", APRIL: "APR",
+  5: "MAY", MAY: "MAY",
+  6: "JUN", JUN: "JUN", JUNE: "JUN",
+  7: "JUL", JUL: "JUL", JULY: "JUL",
+  8: "AUG", AUG: "AUG", AUGUST: "AUG",
+  9: "SEPT", SEP: "SEPT", SEPT: "SEPT", SEPTEMBER: "SEPT",
+  10: "OCT", OCT: "OCT", OCTOBER: "OCT",
+  11: "NOV", NOV: "NOV", NOVEMBER: "NOV",
+  12: "DEC", DEC: "DEC", DECEMBER: "DEC",
+};
+
+/**
+ * Formats a single date component of a billing period into "DD MMM YYYY" with uppercase month abbreviation.
+ * Example: "26 AUG 2026", "25 SEPT 2026", "01 AUG 2026", etc.
+ */
+export const formatBillingDatePart = (val) => {
+  if (!val) return "";
+  const s = String(val).trim();
+
+  // Pattern 1: "26 AUG 2026", "26 AUGUST 2026", "26-AUG-2026", "26th Aug 2026"
+  const textMatch = s.match(/^(\d{1,2})(?:st|nd|rd|th)?[\s\-]+([a-zA-Z]+)[\s\-]+(\d{2,4})$/);
+  if (textMatch) {
+    const day = String(parseInt(textMatch[1], 10)).padStart(2, "0");
+    const mStr = textMatch[2].toUpperCase();
+    let year = parseInt(textMatch[3], 10);
+    if (year < 100) year += 2000;
+    const month = BILLING_MONTH_MAP[mStr];
+    if (month && year >= 1970 && year <= 2100) {
+      return `${day} ${month} ${year}`;
+    }
+  }
+
+  // Pattern 2: DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmyMatch = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if (dmyMatch) {
+    const day = String(parseInt(dmyMatch[1], 10)).padStart(2, "0");
+    const monthNum = parseInt(dmyMatch[2], 10);
+    let year = parseInt(dmyMatch[3], 10);
+    if (year < 100) year += 2000;
+    const month = BILLING_MONTH_MAP[monthNum];
+    if (month && year >= 1970 && year <= 2100) {
+      return `${day} ${month} ${year}`;
+    }
+  }
+
+  // Pattern 3: YYYY-MM-DD or YYYY/MM/DD
+  const ymdMatch = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const monthNum = parseInt(ymdMatch[2], 10);
+    const day = String(parseInt(ymdMatch[3], 10)).padStart(2, "0");
+    const month = BILLING_MONTH_MAP[monthNum];
+    if (month && year >= 1970 && year <= 2100) {
+      return `${day} ${month} ${year}`;
+    }
+  }
+
+  // Fallback: parse via normalizeDate
+  const d = normalizeDate(val);
+  if (!d) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(d);
+  const partMap = {};
+  for (const p of parts) partMap[p.type] = p.value;
+  const day = String(partMap.day).padStart(2, "0");
+  const monthIdx = parseInt(partMap.month, 10) - 1;
+  const year = partMap.year;
+  const month = BILLING_MONTH_BY_INDEX[monthIdx] || "";
+  return `${day} ${month} ${year}`;
+};
+
 export const getBillingPeriod = (invoiceDate) => {
-  if (!invoiceDate) return "";
-  const date = new Date(invoiceDate);
-  if (Number.isNaN(date.getTime())) return "";
-  const start = new Date(date.getFullYear(), date.getMonth(), 1);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  const parsedDate = normalizeDate(invoiceDate);
+  if (!parsedDate) return "";
 
-  const formatDateString = (d) => {
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = d.toLocaleDateString("en-GB", { month: "long" }).toUpperCase();
-    const year = d.getFullYear();
-    return `${day} ${month} ${year}`;
-  };
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(parsedDate);
 
-  return `${formatDateString(start)} to ${formatDateString(end)}`;
+  const partMap = {};
+  for (const p of parts) partMap[p.type] = p.value;
+  const year = parseInt(partMap.year, 10);
+  const monthIdx = parseInt(partMap.month, 10) - 1;
+
+  const monthAbbr = BILLING_MONTH_BY_INDEX[monthIdx];
+  const lastDay = new Date(Date.UTC(year, monthIdx + 1, 0)).getUTCDate();
+  const lastDayStr = String(lastDay).padStart(2, "0");
+
+  return `01 ${monthAbbr} ${year} to ${lastDayStr} ${monthAbbr} ${year}`;
+};
+
+export const normalizeBillingPeriod = (billingPeriod, fallbackInvoiceDate) => {
+  if (billingPeriod) {
+    const s = String(billingPeriod).trim();
+
+    // Check if entire string is an Excel serial number or numeric date e.g. "46265"
+    if (/^\d{5}(\.\d+)?$/.test(s)) {
+      const bp = getBillingPeriod(s);
+      if (bp) return bp;
+    }
+
+    // Check if corrupted with Excel serial like '01 JANUARY 46265 to 31 JANUARY 46265'
+    const serialMatch = s.match(/\b([3-5]\d{4})\b/);
+    if (serialMatch) {
+      const bp = getBillingPeriod(serialMatch[1]);
+      if (bp) return bp;
+    }
+
+    // Check if it is a date range separated by "to", "-", or "–"
+    const rangeMatch = s.split(/\s+(?:to|TO|To|-|–|—)\s+/);
+    if (rangeMatch.length === 2) {
+      const p1 = formatBillingDatePart(rangeMatch[0]);
+      const p2 = formatBillingDatePart(rangeMatch[1]);
+      if (p1 && p2) {
+        return `${p1} to ${p2}`;
+      }
+    }
+
+    // If single date given as billingPeriod
+    const singleDate = formatBillingDatePart(s);
+    if (singleDate) {
+      return getBillingPeriod(s);
+    }
+
+    return s;
+  }
+
+  return fallbackInvoiceDate ? getBillingPeriod(fallbackInvoiceDate) : "";
 };
 
 export const getContractPeriodDates = (renewalDate) => {
-  const date = renewalDate ? new Date(renewalDate) : new Date();
-  if (Number.isNaN(date.getTime())) {
-    return { contractPeriod: "" };
-  }
+  const date = normalizeDate(renewalDate) || new Date();
   let startYear = date.getFullYear();
   let startMonth = date.getMonth() + 1;
   if (startMonth > 11) {
@@ -147,6 +355,17 @@ export const getContractPeriodDates = (renewalDate) => {
     contractEndDate: endDate,
     contractPeriod,
   };
+};
+
+export const formatCleanAmountInWords = (rawWords, amount) => {
+  let words = rawWords ? String(rawWords).trim() : "";
+  if (!words && amount !== undefined && amount !== null && amount !== "") {
+    words = numberToWords(amount);
+  }
+  if (!words) return "";
+  words = words.replace(/^(?:rupees\s*)+/i, "").replace(/(?:\s*only)+$/i, "").trim();
+  if (!words) return "";
+  return `RUPEES ${words.toUpperCase()} ONLY`;
 };
 
 export const numberToWords = (amount) => {
@@ -230,35 +449,48 @@ const resolveTemplatePath = (template) => {
  * Get active document template.
  */
 const getActiveTemplate = async (documentType) => {
-  const templates = await DocumentTemplate.find({ documentType }).sort({ isActive: -1, updatedAt: -1 });
+  if (mongoose.connection?.readyState === 1) {
+    try {
+      const templates = await DocumentTemplate.find({ documentType }).sort({ isActive: -1, updatedAt: -1 });
 
-  for (const tmpl of templates) {
-    const resolvedPath = resolveTemplatePath(tmpl);
-    if (resolvedPath) {
-      return {
-        ...(tmpl.toObject ? tmpl.toObject() : tmpl),
-        filePath: resolvedPath,
-      };
+      for (const tmpl of templates) {
+        const resolvedPath = resolveTemplatePath(tmpl);
+        if (resolvedPath) {
+          return {
+            ...(tmpl.toObject ? tmpl.toObject() : tmpl),
+            filePath: resolvedPath,
+          };
+        }
+      }
+    } catch (e) {
+      // Fallback to disk templates if query fails
     }
   }
 
-  // Fallback to related documentType if requested type file is not on disk
-  const fallbacks = {
-    "tax-invoice": "invoice",
-    "att-quotation": "quotation",
+  // Fallback to disk templates when database is unavailable or during standalone verification
+  const fallbackNames = {
+    "tax-invoice": ["FORMAT TAX BILL PLACEHOLDER.docx", "FORMAT TAX BILL PLACEHOLDER.pdf"],
+    invoice: ["FORMAT - PC INVOICE PLACEHOLDER.docx", "FORMAT - PC INVOICE PLACEHOLDER.pdf"],
+    quotation: [
+      "1791628450521-535595073.pdf",
+      "1788666430485-540408911.docx",
+      "PC_QTN_-_FORMAT.docx",
+    ],
+    "contract-renewal": ["FORMAT - CONTRACT RENEWAL.docx", "FORMAT - CONTRACT RENEWAL.pdf"],
+    "one-time-job": ["FORMAT - ONE TIME JOB.docx", "FORMAT - ONE TIME JOB.pdf"],
+    "att-quotation": ["FORMAT - ATT QTN PLACEHOLDER.docx", "FORMAT - ATT QTN PLACEHOLDER.pdf"],
   };
 
-  const fallbackType = fallbacks[documentType];
-  if (fallbackType) {
-    const fallbackTemplates = await DocumentTemplate.find({ documentType: fallbackType }).sort({ isActive: -1, updatedAt: -1 });
-    for (const tmpl of fallbackTemplates) {
-      const resolvedPath = resolveTemplatePath(tmpl);
-      if (resolvedPath) {
-        return {
-          ...(tmpl.toObject ? tmpl.toObject() : tmpl),
-          filePath: resolvedPath,
-        };
-      }
+  const candidates = fallbackNames[documentType] || [];
+  for (const name of candidates) {
+    const p = resolveTemplatePath({ filePath: name, fileName: name });
+    if (p) {
+      return {
+        documentType,
+        filePath: p,
+        fileName: name,
+        mimeType: name.endsWith(".pdf") ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      };
     }
   }
 
@@ -267,12 +499,208 @@ const getActiveTemplate = async (documentType) => {
   );
 };
 
+export const isPdfTemplateFile = (template) => Boolean(
+  template?.mimeType === "application/pdf" ||
+  (typeof template?.filePath === "string" && template.filePath.toLowerCase().endsWith(".pdf")) ||
+  (typeof template?.fileName === "string" && template.fileName.toLowerCase().endsWith(".pdf"))
+);
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function applyHangingIndentToRenderedXml(xmlContent) {
+  const labelConfigs = [
+    { label: "PREMISES TREATED:", indent: 2150 },
+    { label: "Premises to be Treated:", indent: 2150 },
+    { label: "Premise To Be Treated:", indent: 2150 },
+    { label: "Location to be Treated:", indent: 2150 },
+    { label: "TYPE OF TREATMENT:", indent: 2150 },
+    { label: "BILLING PERIOD :", indent: 2400 },
+    { label: "Contract Period :", indent: 2400 },
+    { label: "WORK ORDER NO :", indent: 2400 },
+    { label: "WORK ORDER DATE :", indent: 2400 },
+    { label: "Client Name :", indent: 2400 },
+    { label: "Address :", indent: 2400 },
+    { label: "Contact Person :", indent: 2400 },
+    { label: "Contact Number :", indent: 2400 },
+    { label: "Payment Term:", indent: 2200 },
+    { label: "Subject :", indent: 1600 },
+    { label: "Specification :", indent: 2200 },
+    { label: "Equipment :", indent: 2000 },
+  ];
+
+  let xml = xmlContent;
+
+  // Guard 1: Ensure contract renewal tables do not have ColorfulList style grey shading
+  if (xml.includes('w:tblStyle w:val="ColorfulList"')) {
+    xml = xml.replace(/w:tblStyle w:val="ColorfulList"/g, 'w:tblStyle w:val="TableGrid"');
+  }
+
+  // Guard 2: Ensure ATT quotation scope table value cells (blue cells BCD6ED) have clean uniform padding & no hanging/cutoff
+  if (xml.includes("BCD6ED")) {
+    xml = xml.replace(/<w:tc\b[\s\S]*?<\/w:tc>/g, (tcXml) => {
+      if (!tcXml.includes("BCD6ED")) return tcXml;
+      let cleaned = tcXml;
+      cleaned = cleaned.replace(/w:right="5\d+"/g, 'w:right="120"');
+      cleaned = cleaned.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (pXml) => {
+        let p = pXml;
+        p = p.replace(/(<w:t[^>]*>)(\s+)/g, "$1");
+        const indMatch = p.match(/<w:ind\b([^>]*)\/?>/i);
+        const uniformInd = `<w:ind w:left="120" w:right="120"/>`;
+        if (indMatch) {
+          p = p.replace(indMatch[0], uniformInd);
+        } else if (p.includes("<w:pPr>")) {
+          p = p.replace("<w:pPr>", `<w:pPr>${uniformInd}`);
+        } else if (p.includes("<w:pPr/>")) {
+          p = p.replace("<w:pPr/>", `<w:pPr>${uniformInd}</w:pPr>`);
+        } else {
+          p = p.replace(/<w:p(\s+[^>]*)?>/, `<w:p$1><w:pPr>${uniformInd}</w:pPr>`);
+        }
+        return p;
+      });
+      return cleaned;
+    });
+  }
+
+  // Align Being Charges starting position with PREMISES TREATED: label starting position
+  const premisesPMatch = xml.match(/<w:p\b[\s\S]*?PREMISES TREATED:[\s\S]*?<\/w:p>/i);
+  let targetIntroLeft = 176;
+  if (premisesPMatch) {
+    const pIndMatch = premisesPMatch[0].match(/<w:ind\b[^>]*w:left="(\d+)"/i);
+    if (pIndMatch) {
+      targetIntroLeft = parseInt(pIndMatch[1], 10);
+    }
+  }
+
+  // Ensure introductory text inside Particulars cell aligns exactly with PREMISES TREATED:
+  xml = xml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (pXml) => {
+    if (!/Being Charges|mentioned below/i.test(pXml)) return pXml;
+    let p = pXml;
+    // Strip arbitrary spacing runs inside introductory text
+    p = p.replace(/(<w:t[^>]*>)\s{2,}(<\/w:t>)/g, "$1$2");
+
+    const indMatch = p.match(/<w:ind\b([^>]*)\/?>/i);
+    const newInd = `<w:ind w:left="${targetIntroLeft}" w:right="${targetIntroLeft}"/>`;
+    if (indMatch) {
+      p = p.replace(indMatch[0], newInd);
+    } else if (p.includes("<w:pPr>")) {
+      p = p.replace("<w:pPr>", `<w:pPr>${newInd}`);
+    } else if (p.includes("<w:pPr/>")) {
+      p = p.replace("<w:pPr/>", `<w:pPr>${newInd}</w:pPr>`);
+    } else {
+      p = p.replace(/<w:p(\s+[^>]*)?>/, `<w:p$1><w:pPr>${newInd}</w:pPr>`);
+    }
+    return p;
+  });
+
+  for (const { label, indent } of labelConfigs) {
+    const escapedLabel = escapeRegex(label);
+    const pRegex = new RegExp(`(<w:p\\b[\\s\\S]*?>)([\\s\\S]*?)(<\\/w:p>)`, "g");
+
+    xml = xml.replace(pRegex, (fullP, pOpen, pBody, pClose) => {
+      // Check if pBody contains the label (case-insensitive)
+      if (!new RegExp(escapedLabel, "i").test(pBody)) return fullP;
+      // If already processed with hanging indent, don't duplicate
+      if (pBody.includes("w:hanging=")) return fullP;
+      // If the paragraph is already part of a Word bullet/numbered list, do not override
+      if (pBody.includes("<w:numPr>") || pBody.includes("<w:numPr ")) return fullP;
+
+      let indentTwips = indent;
+      const szMatch = pBody.match(/<w:sz\b[^>]*?w:val="(\d+)"/i);
+      if (szMatch) {
+        const pt = parseInt(szMatch[1], 10) / 2;
+        if (/premises/i.test(label)) {
+          indentTwips = Math.round(pt * 205) + 90;
+        } else if (/treatment/i.test(label)) {
+          indentTwips = Math.round(pt * 218) + 100;
+        }
+      }
+
+      let baseLeft = 0;
+      const indMatch = pBody.match(/<w:ind\b([^>]*)\/?>/i);
+      if (indMatch) {
+        const leftMatch = indMatch[1].match(/w:left="(\d+)"/i);
+        const hangMatch = indMatch[1].match(/w:hanging="(\d+)"/i);
+        if (leftMatch) {
+          baseLeft = parseInt(leftMatch[1], 10);
+          if (hangMatch) {
+            baseLeft -= parseInt(hangMatch[1], 10);
+          }
+        }
+      }
+
+      const totalLeft = baseLeft + indentTwips;
+      const newInd = `<w:ind w:left="${totalLeft}" w:hanging="${indentTwips}"/>`;
+      const tabStop = `<w:tab w:val="left" w:pos="${totalLeft}"/>`;
+
+      let updatedBody = pBody;
+
+      // Update or insert w:ind in w:pPr
+      if (indMatch) {
+        updatedBody = updatedBody.replace(indMatch[0], newInd);
+      } else if (updatedBody.includes("<w:pPr>")) {
+        updatedBody = updatedBody.replace("<w:pPr>", `<w:pPr>${newInd}`);
+      } else if (updatedBody.includes("<w:pPr/>")) {
+        updatedBody = updatedBody.replace("<w:pPr/>", `<w:pPr>${newInd}</w:pPr>`);
+      } else {
+        updatedBody = `<w:pPr>${newInd}</w:pPr>${updatedBody}`;
+      }
+
+      // Add tab stop to w:tabs
+      if (updatedBody.includes("<w:tabs>")) {
+        if (!updatedBody.includes(`w:pos="${totalLeft}"`)) {
+          updatedBody = updatedBody.replace("<w:tabs>", `<w:tabs>${tabStop}`);
+        }
+      } else {
+        updatedBody = updatedBody.replace("</w:pPr>", `<w:tabs>${tabStop}</w:tabs></w:pPr>`);
+      }
+
+      // Add slight vertical separation above TYPE OF TREATMENT:
+      if (/treatment/i.test(label)) {
+        const spacingMatch = updatedBody.match(/<w:spacing\b([^>]*)\/?>/i);
+        const treatmentSpacing = `<w:spacing w:before="160" w:after="0" w:line="260" w:lineRule="auto"/>`;
+        if (spacingMatch) {
+          let sAttr = spacingMatch[1];
+          if (/w:before="\d+"/i.test(sAttr)) {
+            sAttr = sAttr.replace(/w:before="\d+"/i, 'w:before="160"');
+          } else {
+            sAttr = `${sAttr} w:before="160"`;
+          }
+          updatedBody = updatedBody.replace(spacingMatch[0], `<w:spacing${sAttr}/>`);
+        } else if (updatedBody.includes("<w:pPr>")) {
+          updatedBody = updatedBody.replace("<w:pPr>", `<w:pPr>${treatmentSpacing}`);
+        } else if (updatedBody.includes("<w:pPr/>")) {
+          updatedBody = updatedBody.replace("<w:pPr/>", `<w:pPr>${treatmentSpacing}</w:pPr>`);
+        }
+      }
+
+      // Insert tab between label and value if not already present, stripping leading template spaces so label stays at margin
+      const labelRunRegex = new RegExp(`(<w:t[^>]*>)(\\s*)(${escapedLabel})(\\s*)([\\s\\S]*?)(<\\/w:t>)`, "i");
+      updatedBody = updatedBody.replace(labelRunRegex, (m, openT, preSpaces, lbl, postSpaces, valText, closeT) => {
+        const cleanVal = valText.trimStart();
+        if (cleanVal.length > 0) {
+          return `${openT}${lbl}${closeT}</w:r><w:r><w:tab/></w:r><w:r>${openT}${cleanVal}${closeT}`;
+        } else {
+          return `${openT}${lbl}${closeT}</w:r><w:r><w:tab/></w:r><w:r>`;
+        }
+      });
+
+      // Strip any whitespace in the immediate subsequent run's text
+      updatedBody = updatedBody.replace(/(<w:tab\/>\s*<\/w:r>\s*<w:r\b[^>]*>\s*<w:t\b[^>]*>)\s+/g, "$1");
+
+      return `${pOpen}${updatedBody}${pClose}`;
+    });
+  }
+
+  return xml;
+}
+
 /**
  * Load DOCX template.
  */
 const loadDocxTemplate = (filePath) => {
   const content = fs.readFileSync(filePath, "binary");
-
   const zip = new PizZip(content);
 
   return new Docxtemplater(zip, {
@@ -282,10 +710,21 @@ const loadDocxTemplate = (filePath) => {
 };
 
 /**
- * Generate DOCX buffer.
+ * Generate DOCX buffer with post-render hanging indent.
  */
 const generateBuffer = (doc) => {
   const zip = doc.getZip();
+  try {
+    const docFile = zip.file("word/document.xml");
+    if (docFile) {
+      let xml = docFile.asText();
+      xml = applyHangingIndentToRenderedXml(xml);
+      zip.file("word/document.xml", xml);
+    }
+  } catch (err) {
+    console.warn("Could not apply post-render hanging indent:", err.message);
+  }
+
   return zip.generate({
     type: "nodebuffer",
     compression: "DEFLATE",
@@ -296,7 +735,14 @@ const generateBuffer = (doc) => {
  * Get company settings.
  */
 const getCompanySettings = async () => {
-  return await CompanySetting.findOne();
+  if (mongoose.connection?.readyState === 1) {
+    try {
+      return await CompanySetting.findOne();
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
 };
 
 // ============================================================
@@ -347,29 +793,45 @@ const buildCompanyData = (companySettings) => {
 // CUSTOMER DATA
 // ============================================================
 
-const buildCustomerData = (customer) => {
+export const buildCustomerData = (customer, documentSnapshot) => {
   customer = customer || {};
+  const snap = documentSnapshot || {};
+  const jobNo = snap.jobNo || customer.jobNo || customer.archivedJobNo || "";
+  const name =
+    snap.companyName ||
+    snap.fullName ||
+    snap.customerName ||
+    customer.companyName ||
+    customer.fullName ||
+    "";
+  const address = snap.address || customer.address || "";
+  const phone = snap.phone || customer.phone || "";
+  const email = snap.email || customer.email || "";
 
   return {
-    customerName: customer.companyName || customer.fullName || "",
+    customerName: name,
 
-    customerFullName: customer.fullName || "",
+    customerFullName: snap.fullName || snap.customerName || customer.fullName || "",
 
-    customerCompanyName: customer.companyName || "",
+    customerCompanyName: snap.companyName || customer.companyName || "",
 
-    customerAddress: customer.address || "",
+    customerAddress: address,
 
-    customerPhone: customer.phone || "",
+    customerPhone: phone,
 
-    customerAlternatePhone: customer.alternatePhone || "",
+    customerAlternatePhone: customer.alternatePhone || snap.alternatePhone || "",
 
-    customerEmail: customer.email || "",
+    customerEmail: email,
 
-    customerType: customer.customerType || "",
+    customerType: customer.customerType || snap.customerType || "",
 
-    customerJobNo: customer.jobNo || "",
+    customerJobNo: jobNo,
 
-    customerJobNumber: customer.jobNo || "",
+    customerJobNumber: jobNo,
+
+    contactPerson: snap.contactPerson || customer.contactPerson || "",
+
+    customerContactPerson: snap.contactPerson || customer.contactPerson || "",
   };
 };
 
@@ -721,7 +1183,34 @@ export const generateInvoiceDocx = async (invoice) => {
     // Template
     // ------------------------------------------------------
 
-    const template = await getActiveTemplate(documentType);
+    let template;
+    try {
+      template = await getActiveTemplate(documentType);
+    } catch (_) {
+      const fallbackCandidates = isGstInvoice
+        ? [
+            path.resolve(process.cwd(), "uploads", "templates", "FORMAT TAX BILL PLACEHOLDER.docx"),
+            path.resolve(process.cwd(), "uploads", "templates", "FORMAT TAX BILL PLACEHOLDER.pdf"),
+            path.resolve(process.cwd(), "server", "uploads", "templates", "FORMAT TAX BILL PLACEHOLDER.docx"),
+            path.resolve(process.cwd(), "server", "uploads", "templates", "FORMAT TAX BILL PLACEHOLDER.pdf"),
+            path.resolve(process.cwd(), "uploads", "templates", "1792067018549-94905542.docx"),
+            path.resolve(process.cwd(), "server", "uploads", "templates", "1792067018549-94905542.docx"),
+          ]
+        : [
+            path.resolve(process.cwd(), "uploads", "templates", "FORMAT - PC INVOICE PLACEHOLDER.docx"),
+            path.resolve(process.cwd(), "uploads", "templates", "FORMAT - PC INVOICE PLACEHOLDER.pdf"),
+            path.resolve(process.cwd(), "server", "uploads", "templates", "FORMAT - PC INVOICE PLACEHOLDER.docx"),
+            path.resolve(process.cwd(), "server", "uploads", "templates", "FORMAT - PC INVOICE PLACEHOLDER.pdf"),
+            path.resolve(process.cwd(), "uploads", "templates", "1788674559888-834328369.docx"),
+            path.resolve(process.cwd(), "server", "uploads", "templates", "1788674559888-834328369.docx"),
+          ];
+      const found = fallbackCandidates.find((c) => fs.existsSync(c));
+      if (found) {
+        template = { filePath: found, documentType };
+      } else {
+        throw new Error(`The active template file for '${documentType}' could not be found on the server`);
+      }
+    }
 
     // ------------------------------------------------------
     // Company
@@ -732,16 +1221,10 @@ export const generateInvoiceDocx = async (invoice) => {
     const companyData = buildCompanyData(companySettings);
 
     // ------------------------------------------------------
-    // DOCX
-    // ------------------------------------------------------
-
-    const doc = loadDocxTemplate(template.filePath);
-
-    // ------------------------------------------------------
     // Customer
     // ------------------------------------------------------
 
-    const customerData = buildCustomerData(invoice.customer);
+    const customerData = buildCustomerData(invoice.customer, invoice.customerSnapshot);
 
     // ------------------------------------------------------
     // Services
@@ -792,10 +1275,9 @@ export const generateInvoiceDocx = async (invoice) => {
 
       invoiceType: invoice.invoiceType || "",
 
-      billingPeriod: firstValue(
+      billingPeriod: normalizeBillingPeriod(
         invoice.billingPeriod,
-        invoice.invoiceDate ? getBillingPeriod(invoice.invoiceDate) : "",
-        "",
+        invoice.invoiceDate
       ),
 
       contractPeriod: firstValue(invoice.contractPeriod, ""),
@@ -927,9 +1409,25 @@ export const generateInvoiceDocx = async (invoice) => {
     };
 
     // ------------------------------------------------------
-    // Render
+    // PDF / DOCX Pipeline Routing
     // ------------------------------------------------------
 
+    if (isPdfTemplateFile(template)) {
+      const pdfBuffer = await generatePdfFromPdfTemplate(template.filePath, data, documentType);
+      return {
+        buffer: pdfBuffer,
+        template,
+        documentType,
+        data,
+        isPdfDirect: true,
+      };
+    }
+
+    // ------------------------------------------------------
+    // Render DOCX
+    // ------------------------------------------------------
+
+    const doc = loadDocxTemplate(template.filePath);
     doc.render(data);
 
     const buffer = generateBuffer(doc);
@@ -963,14 +1461,15 @@ export const generateAttQuotationDocx = async (quotation) => {
     try {
       template = await getActiveTemplate("att-quotation");
     } catch (_) {
-      const fallbackPath = path.resolve(
-        process.cwd(),
-        "uploads",
-        "templates",
-        "FORMAT - ATT QTN PLACEHOLDER.docx",
-      );
-      if (fs.existsSync(fallbackPath)) {
-        template = { filePath: fallbackPath, documentType: "att-quotation" };
+      const fallbackCandidates = [
+        path.resolve(process.cwd(), "uploads", "templates", "FORMAT - ATT QTN PLACEHOLDER.docx"),
+        path.resolve(process.cwd(), "uploads", "templates", "FORMAT - ATT QTN PLACEHOLDER.pdf"),
+        path.resolve(process.cwd(), "server", "uploads", "templates", "FORMAT - ATT QTN PLACEHOLDER.docx"),
+        path.resolve(process.cwd(), "server", "uploads", "templates", "FORMAT - ATT QTN PLACEHOLDER.pdf"),
+      ];
+      const found = fallbackCandidates.find((c) => fs.existsSync(c));
+      if (found) {
+        template = { filePath: found, documentType: "att-quotation" };
       } else {
         throw new Error("ATT Quotation template file could not be found");
       }
@@ -978,8 +1477,7 @@ export const generateAttQuotationDocx = async (quotation) => {
 
     const companySettings = await getCompanySettings();
     const companyData = buildCompanyData(companySettings);
-    const doc = loadDocxTemplate(template.filePath);
-    const customerData = buildCustomerData(quotation.customer);
+    const customerData = buildCustomerData(quotation.customer, quotation.customerSnapshot);
 
     const treatments = Array.isArray(quotation.treatments)
       ? quotation.treatments.map((t) => ({
@@ -1020,12 +1518,14 @@ export const generateAttQuotationDocx = async (quotation) => {
       premises: firstValue(
         quotation.premises,
         customerData.customerAddress,
-      ),
+        "",
+      ).trim(),
 
       premiseToBeTreated: firstValue(
         quotation.premises,
         customerData.customerAddress,
-      ),
+        "",
+      ).trim(),
 
       specification: firstValue(
         quotation.specification,
@@ -1050,6 +1550,18 @@ export const generateAttQuotationDocx = async (quotation) => {
       treatments,
     };
 
+    if (isPdfTemplateFile(template)) {
+      const pdfBuffer = await generatePdfFromPdfTemplate(template.filePath, data, "att-quotation");
+      return {
+        buffer: pdfBuffer,
+        template,
+        documentType: "att-quotation",
+        data,
+        isPdfDirect: true,
+      };
+    }
+
+    const doc = loadDocxTemplate(template.filePath);
     doc.render(data);
     const buffer = generateBuffer(doc);
 
@@ -1079,17 +1591,29 @@ export const generateQuotationDocx = async (quotation) => {
       return await generateAttQuotationDocx(quotation);
     }
 
-    const template = await getActiveTemplate("quotation");
-
-    const isPdfTemplate =
-      template?.mimeType === "application/pdf" ||
-      (template?.filePath && template.filePath.toLowerCase().endsWith(".pdf"));
+    let template;
+    try {
+      template = await getActiveTemplate("quotation");
+    } catch (_) {
+      const fallbackCandidates = [
+        path.resolve(process.cwd(), "uploads", "templates", "1791628450521-535595073.pdf"),
+        path.resolve(process.cwd(), "server", "uploads", "templates", "1791628450521-535595073.pdf"),
+        path.resolve(process.cwd(), "uploads", "templates", "1788674503714-250917028.docx"),
+        path.resolve(process.cwd(), "server", "uploads", "templates", "1788674503714-250917028.docx"),
+      ];
+      const found = fallbackCandidates.find((c) => fs.existsSync(c));
+      if (found) {
+        template = { filePath: found, documentType: "quotation" };
+      } else {
+        throw new Error("Quotation template file could not be found");
+      }
+    }
 
     const companySettings = await getCompanySettings();
 
     const companyData = buildCompanyData(companySettings);
 
-    const customerData = buildCustomerData(quotation.customer);
+    const customerData = buildCustomerData(quotation.customer, quotation.customerSnapshot);
 
     const services = buildQuotationServices(quotation);
 
@@ -1189,8 +1713,8 @@ export const generateQuotationDocx = async (quotation) => {
       services,
     };
 
-    if (isPdfTemplate) {
-      const pdfBuffer = await generatePdfFromPdfTemplate(template.filePath, data);
+    if (isPdfTemplateFile(template)) {
+      const pdfBuffer = await generatePdfFromPdfTemplate(template.filePath, data, "quotation");
       return {
         buffer: pdfBuffer,
         template,
@@ -1233,7 +1757,25 @@ export const generateContractRenewalDocx = async (renewal) => {
     // ACTIVE TEMPLATE
     // ------------------------------------------------------
 
-    const template = await getActiveTemplate("contract-renewal");
+    let template;
+    try {
+      template = await getActiveTemplate("contract-renewal");
+    } catch (_) {
+      const fallbackCandidates = [
+        path.resolve(process.cwd(), "uploads", "templates", "FORMAT - CONTRACT RENEWAL.docx"),
+        path.resolve(process.cwd(), "uploads", "templates", "FORMAT - CONTRACT RENEWAL.pdf"),
+        path.resolve(process.cwd(), "server", "uploads", "templates", "FORMAT - CONTRACT RENEWAL.docx"),
+        path.resolve(process.cwd(), "server", "uploads", "templates", "FORMAT - CONTRACT RENEWAL.pdf"),
+        path.resolve(process.cwd(), "uploads", "templates", "1788674588486-303766681.docx"),
+        path.resolve(process.cwd(), "server", "uploads", "templates", "1788674588486-303766681.docx"),
+      ];
+      const found = fallbackCandidates.find((c) => fs.existsSync(c));
+      if (found) {
+        template = { filePath: found, documentType: "contract-renewal" };
+      } else {
+        throw new Error("Contract renewal template file could not be found");
+      }
+    }
 
     // ------------------------------------------------------
     // COMPANY SETTINGS
@@ -1244,18 +1786,12 @@ export const generateContractRenewalDocx = async (renewal) => {
     const companyData = buildCompanyData(companySettings);
 
     // ------------------------------------------------------
-    // LOAD DOCX
-    // ------------------------------------------------------
-
-    const doc = loadDocxTemplate(template.filePath);
-
-    // ------------------------------------------------------
     // CUSTOMER
     // ------------------------------------------------------
 
     const customer = renewal.customer || {};
 
-    const customerData = buildCustomerData(customer);
+    const customerData = buildCustomerData(customer, renewal.customerSnapshot);
 
     // ------------------------------------------------------
     // SERVICES
@@ -1479,10 +2015,9 @@ export const generateContractRenewalDocx = async (renewal) => {
 
       amount: formatAmount(renewalAmount),
 
-      amountInWords: firstValue(
+      amountInWords: formatCleanAmountInWords(
         renewal.amountInWords,
-        renewalAmount ? `Rupees ${numberToWords(renewalAmount)} Only` : "",
-        "",
+        renewalAmount,
       ),
 
       // ====================================================
@@ -1517,9 +2052,25 @@ export const generateContractRenewalDocx = async (renewal) => {
     };
 
     // ------------------------------------------------------
+    // PDF / DOCX Pipeline Routing
+    // ------------------------------------------------------
+
+    if (isPdfTemplateFile(template)) {
+      const pdfBuffer = await generatePdfFromPdfTemplate(template.filePath, data, "contract-renewal");
+      return {
+        buffer: pdfBuffer,
+        template,
+        documentType: "contract-renewal",
+        data,
+        isPdfDirect: true,
+      };
+    }
+
+    // ------------------------------------------------------
     // RENDER TEMPLATE
     // ------------------------------------------------------
 
+    const doc = loadDocxTemplate(template.filePath);
     doc.render(data);
 
     // ------------------------------------------------------
@@ -1530,11 +2081,8 @@ export const generateContractRenewalDocx = async (renewal) => {
 
     return {
       buffer,
-
       template,
-
       documentType: "contract-renewal",
-
       data,
     };
   } catch (error) {
@@ -1561,14 +2109,15 @@ export const generateOneTimeJobDocx = async (service) => {
     try {
       template = await getActiveTemplate("one-time-job");
     } catch (_) {
-      const fallbackPath = path.resolve(
-        process.cwd(),
-        "uploads",
-        "templates",
-        "FORMAT - ONE TIME JOB.docx",
-      );
-      if (fs.existsSync(fallbackPath)) {
-        template = { filePath: fallbackPath, documentType: "one-time-job" };
+      const fallbackCandidates = [
+        path.resolve(process.cwd(), "uploads", "templates", "FORMAT - ONE TIME JOB.docx"),
+        path.resolve(process.cwd(), "uploads", "templates", "FORMAT - ONE TIME JOB.pdf"),
+        path.resolve(process.cwd(), "server", "uploads", "templates", "FORMAT - ONE TIME JOB.docx"),
+        path.resolve(process.cwd(), "server", "uploads", "templates", "FORMAT - ONE TIME JOB.pdf"),
+      ];
+      const found = fallbackCandidates.find((c) => fs.existsSync(c));
+      if (found) {
+        template = { filePath: found, documentType: "one-time-job" };
       } else {
         throw new Error("One Time Job template file could not be found");
       }
@@ -1581,15 +2130,10 @@ export const generateOneTimeJobDocx = async (service) => {
     const companyData = buildCompanyData(companySettings);
 
     // ------------------------------------------------------
-    // LOAD DOCX
-    // ------------------------------------------------------
-    const doc = loadDocxTemplate(template.filePath);
-
-    // ------------------------------------------------------
     // CUSTOMER & OPERATOR DATA
     // ------------------------------------------------------
     const customer = service.customer || {};
-    const customerData = buildCustomerData(customer);
+    const customerData = buildCustomerData(customer, service.customerSnapshot);
 
     // ------------------------------------------------------
     // OCCURRENCES MAPPING (1ST, 2ND, 3RD SERVICE / COMPLAINT)
@@ -1674,7 +2218,14 @@ export const generateOneTimeJobDocx = async (service) => {
       ...companyData,
 
       jobNo: (() => {
-        const raw = firstValue(service.jobNo, service.jobNumber, "");
+        const raw = firstValue(
+          service.customerSnapshot?.jobNo,
+          service.jobNo,
+          service.documentNumber,
+          service.jobNumber,
+          customerData.customerJobNo,
+          ""
+        );
         return raw.replace(/^job\s*no[\.\s\-\/:]*/i, "");
       })(),
 
@@ -1767,6 +2318,18 @@ export const generateOneTimeJobDocx = async (service) => {
       upiId: firstValue(companySettings?.upiId, "8356080548@okbizaxis"),
     };
 
+    if (isPdfTemplateFile(template)) {
+      const pdfBuffer = await generatePdfFromPdfTemplate(template.filePath, data, "one-time-job");
+      return {
+        buffer: pdfBuffer,
+        template,
+        documentType: "one-time-job",
+        data,
+        isPdfDirect: true,
+      };
+    }
+
+    const doc = loadDocxTemplate(template.filePath);
     doc.render(data);
     const buffer = generateBuffer(doc);
 

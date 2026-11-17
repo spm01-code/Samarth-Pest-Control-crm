@@ -40,12 +40,18 @@ function Quotations() {
       typeFilter === "All" ? true : qType === typeFilter;
 
     const searchLower = search.toLowerCase();
+    const snap = quotation.customerSnapshot || {};
+    const custFullName = quotation.customer?.fullName || snap.fullName || snap.customerName || "";
+    const custCompany = quotation.customer?.companyName || snap.companyName || "";
+    const custPhone = quotation.customer?.phone || snap.phone || "";
+    const custAltPhone = quotation.customer?.alternatePhone || snap.alternatePhone || "";
+
     const matchesSearch =
       (quotation.quotationNumber?.toLowerCase() || "").includes(searchLower) ||
-      (quotation.customer?.fullName?.toLowerCase() || "").includes(searchLower) ||
-      (quotation.customer?.phone || "").includes(search) ||
-      (quotation.customer?.alternatePhone || "").includes(search) ||
-      (quotation.customer?.companyName?.toLowerCase() || "").includes(searchLower) ||
+      custFullName.toLowerCase().includes(searchLower) ||
+      custCompany.toLowerCase().includes(searchLower) ||
+      custPhone.includes(search) ||
+      custAltPhone.includes(search) ||
       (quotation.premises?.toLowerCase() || "").includes(searchLower) ||
       (quotation.billingTerm?.toLowerCase() || "").includes(searchLower) ||
       qType.toLowerCase().includes(searchLower);
@@ -223,6 +229,17 @@ function Quotations() {
                   {quotation.quotationType || "PC"}
                 </span>
               </div>
+              <div className="text-xs text-slate-500 font-normal truncate max-w-[180px] mt-0.5">
+                {quotation.customer?.fullName ||
+                  quotation.customerSnapshot?.fullName ||
+                  quotation.customerSnapshot?.companyName ||
+                  "-"}
+                {!quotation.customer && (
+                  <span className="ml-1 text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1 py-0.2 rounded font-medium">
+                    Manual
+                  </span>
+                )}
+              </div>
             </td>
 
             <td className="p-3.5 text-slate-700 whitespace-nowrap">
@@ -259,14 +276,20 @@ function Quotations() {
                   View
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => navigate(`/customers/${quotation.customer?._id}?tab=quotations`)}
-                  className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 hover:border-cyan-300 cursor-pointer"
-                  title="View Customer Quotations"
-                >
-                  <HiOutlineUser className="size-3.5 shrink-0" />
-                </button>
+                {quotation.customer?._id && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        `/customers/${quotation.customer._id}?tab=quotations`,
+                      )
+                    }
+                    className="inline-flex items-center gap-1 rounded-md border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 hover:border-cyan-300 cursor-pointer"
+                    title="View Customer Quotations"
+                  >
+                    <HiOutlineUser className="size-3.5 shrink-0" />
+                  </button>
+                )}
 
                 <button
                   type="button"

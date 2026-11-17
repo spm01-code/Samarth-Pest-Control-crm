@@ -40,6 +40,22 @@ const serviceSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    documentNumber: {
+      type: String,
+      trim: true,
+    },
+    customerSnapshot: {
+      jobNo: { type: String, trim: true },
+      customerName: { type: String, trim: true },
+      fullName: { type: String, trim: true },
+      companyName: { type: String, trim: true },
+      address: { type: String, trim: true },
+      phone: { type: String, trim: true },
+      email: { type: String, trim: true },
+      gstNumber: { type: String, trim: true },
+      contactPerson: { type: String, trim: true },
+      snapshotTakenAt: { type: Date, default: Date.now },
+    },
     operatorName: {
       type: String,
       trim: true,
@@ -87,15 +103,12 @@ const serviceSchema = new mongoose.Schema(
     },
     serviceOccurrences: [
       {
+        serviceNo: {
+          type: String,
+          trim: true,
+        },
         occurrenceType: {
           type: String,
-          enum: [
-            "1st-service",
-            "2nd-service",
-            "3rd-service",
-            "complaint",
-            "follow-up",
-          ],
           default: "1st-service",
         },
         serviceDate: {
@@ -112,6 +125,14 @@ const serviceSchema = new mongoose.Schema(
         employee: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Employee",
+        },
+        amount: {
+          type: Number,
+          default: 0,
+        },
+        paymentStatus: {
+          type: String,
+          default: "Unpaid",
         },
         clientSignature: {
           type: String,
@@ -137,20 +158,24 @@ const serviceSchema = new mongoose.Schema(
     },
     frequency: {
       type: String,
-      enum: [
-        "one-time",
-        "weekly",
-        "twice a week",
-        "monthly",
-        "fourth night",
-        "Fourth nightly",
-        "fourth nightly",
-        "Quarterly",
-        "3 Services Yearly",
-        "Yearly 3 services",
-        "yearly 3 services",
-      ],
       required: true,
+      trim: true,
+    },
+
+    frequencyType: {
+      type: String,
+      enum: ["calendar_frequency", "visit_count", "on_demand", "single"],
+      default: "calendar_frequency",
+    },
+
+    contractVisitCount: {
+      type: Number,
+      default: null,
+    },
+
+    rawFrequency: {
+      type: String,
+      trim: true,
     },
 
     serviceDate: {
@@ -179,6 +204,43 @@ const serviceSchema = new mongoose.Schema(
       required: true,
     },
 
+    totalAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    paidAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    balanceAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: ["Paid", "Partially Paid", "Unpaid"],
+      default: "Unpaid",
+    },
+
+    paymentHistory: [
+      {
+        receivedAmount: { type: Number, default: 0 },
+        amount: { type: Number, default: 0 },
+        date: { type: Date, default: Date.now },
+        paymentDate: { type: Date, default: Date.now },
+        mode: { type: String, trim: true },
+        paymentMode: { type: String, trim: true },
+        balance: { type: Number, default: 0 },
+        balanceAfter: { type: Number, default: 0 },
+        remark: { type: String, trim: true },
+        note: { type: String, trim: true },
+        recordedAt: { type: Date, default: Date.now },
+      },
+    ],
+
     status: {
       type: String,
       enum: [
@@ -191,13 +253,38 @@ const serviceSchema = new mongoose.Schema(
       ],
       default: "pending",
     },
+
+    importMeta: {
+      batchId: { type: String, index: true },
+      sourceJobNo: { type: String, trim: true },
+      sourceRows: [{ type: Number }],
+      importedAt: { type: Date },
+    },
   },
   {
     timestamps: true,
   }
 );
 
-serviceSchema.index({ jobNo: 1 }, { unique: true, sparse: true });
+// Indexes:
+// 1. One-Time Job Document uniqueness independently guaranteed on documentNumber
+serviceSchema.index({ documentNumber: 1 }, { unique: true, sparse: true });
+
+// 2. Partial unique index on jobNo for legacy one-time services where documentNumber is not set
+serviceSchema.index(
+  { jobNo: 1 },
+  {
+    name: "jobNo_one_time_partial_unique",
+    unique: true,
+    partialFilterExpression: {
+      frequency: "one-time",
+      jobNo: { $gt: "" },
+    },
+  }
+);
+
+// 3. General non-unique index on jobNo for fast query across recurring services
+serviceSchema.index({ jobNo: 1 });
 
 const Service = mongoose.model("Service", serviceSchema);
 

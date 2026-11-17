@@ -1,15 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { addCustomer } from "../slices/customerSlice";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import { getNextAvailableJobNo, validateManualJobNo } from "../API/jobNumberAPI";
+import { useScrollLock } from "../hooks/useScrollLock";
 
 function CreateCustomerModal({
   isOpen,
   onClose,
 }) {
+  useScrollLock(isOpen);
   const dispatch = useDispatch();
+  const token = useSelector((state) => state.auth.token);
 
   const [formData, setFormData] = useState({
     customerType: "residential",
@@ -22,6 +26,53 @@ function CreateCustomerModal({
     address: "",
   });
 
+  const [autoJobNoPreview, setAutoJobNoPreview] = useState("");
+  const [isManualOverride, setIsManualOverride] = useState(false);
+  const [manualValidation, setManualValidation] = useState(null);
+  const [validating, setValidating] = useState(false);
+
+  // Real-time preview of smallest available Job Number based on name prefix
+  useEffect(() => {
+    if (!token || !isOpen) return;
+    const trimmed = formData.fullName.trim();
+    if (!trimmed) {
+      setAutoJobNoPreview("");
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await getNextAvailableJobNo(trimmed, token);
+        if (res.jobNo) {
+          setAutoJobNoPreview(res.jobNo);
+          if (!isManualOverride) {
+            setFormData((prev) => ({ ...prev, jobNo: "" }));
+          }
+        }
+      } catch (err) {
+        // silent preview fallback
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [formData.fullName, token, isOpen, isManualOverride]);
+
+  const handleValidateManual = async (jobNoToTest) => {
+    if (!jobNoToTest || !jobNoToTest.trim()) {
+      setManualValidation(null);
+      return;
+    }
+    setValidating(true);
+    try {
+      const res = await validateManualJobNo(jobNoToTest.trim(), null, token);
+      setManualValidation(res);
+    } catch (err) {
+      setManualValidation({ valid: false, message: err.message });
+    } finally {
+      setValidating(false);
+    }
+  };
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
@@ -32,9 +83,19 @@ function CreateCustomerModal({
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (isManualOverride && manualValidation && !manualValidation.valid) {
+      toast.error(manualValidation.message || "Please enter a valid, available Job Number");
+      return;
+    }
+
     try {
+      const payload = { ...formData };
+      if (!isManualOverride) {
+        delete payload.jobNo; // Backend auto-allocates smallest available
+      }
+
       const result = await dispatch(
-        addCustomer(formData)
+        addCustomer(payload)
       );
 
       if (addCustomer.fulfilled.match(result)) {
@@ -50,8 +111,16 @@ function CreateCustomerModal({
           email: "",
           address: "",
         });
+        setAutoJobNoPreview("");
+        setIsManualOverride(false);
+        setManualValidation(null);
 
-        toast.success("Customer created successfully.");
+        const assignedNo = result.payload?.customer?.jobNo;
+        toast.success(
+          assignedNo
+            ? `Customer created successfully with Job Number ${assignedNo}.`
+            : "Customer created successfully."
+        );
       } else {
         toast.error(
           getErrorMessage(
@@ -100,18 +169,7 @@ function CreateCustomerModal({
               <option value="commercial">Commercial</option>
             </select>
           </div>
-          {/* Job No */}
-          <div>
-            <label className="block mb-2 font-medium">Job No (Optional)</label>
-            <input
-              type="text"
-              name="jobNo"
-              value={formData.jobNo}
-              onChange={handleChange}
-              placeholder="e.g. A/03 (Auto-generated if left blank)"
-              className="w-full border rounded-lg p-3"
-            />
-          </div>
+
           {/* Full Name */}
           <div>
             <label className="block mb-2 font-medium">Full Name</label>
@@ -120,9 +178,80 @@ function CreateCustomerModal({
               name="fullName"
               value={formData.fullName}
               onChange={handleChange}
+              placeholder="e.g. Ashish Vora"
               required
               className="w-full border rounded-lg p-3"
             />
+          </div>
+
+          {/* Job Number Allocation Box */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Job Number Allocation
+              </label>
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isManualOverride}
+                  onChange={(e) => {
+                    setIsManualOverride(e.target.checked);
+                    if (!e.target.checked) {
+                      setFormData((prev) => ({ ...prev, jobNo: "" }));
+                      setManualValidation(null);
+                    }
+                  }}
+                  className="rounded text-cyan-600 focus:ring-cyan-500 cursor-pointer"
+                />
+                Manual Override
+              </label>
+            </div>
+
+            {!isManualOverride ? (
+              <div className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-3.5 py-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">Auto-allocated:</span>
+                  <span className="font-mono font-bold text-sm text-cyan-700 bg-cyan-50 px-2.5 py-0.5 rounded border border-cyan-200">
+                    {autoJobNoPreview || "Enter full name to preview"}
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400">
+                  Smallest available in prefix sequence
+                </span>
+              </div>
+            ) : (
+              <div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="jobNo"
+                    value={formData.jobNo}
+                    onChange={(e) => {
+                      handleChange(e);
+                      handleValidateManual(e.target.value);
+                    }}
+                    placeholder="e.g. A/03 or S/05-1"
+                    className="w-full bg-white border rounded-lg px-3 py-2 text-sm font-mono font-bold uppercase focus:border-cyan-500 outline-none"
+                  />
+                  {validating && (
+                    <span className="absolute right-3 top-2.5 text-xs text-slate-400">
+                      Checking...
+                    </span>
+                  )}
+                </div>
+                {manualValidation && (
+                  <p
+                    className={`text-xs mt-1.5 font-medium ${
+                      manualValidation.valid ? "text-emerald-600" : "text-amber-600"
+                    }`}
+                  >
+                    {manualValidation.valid
+                      ? `✓ ${manualValidation.jobNo} is available for assignment`
+                      : `⚠ ${manualValidation.message || "Job Number is unavailable"}`}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           {/* Company */}
           {formData.customerType === "commercial" && (

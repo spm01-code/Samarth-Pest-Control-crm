@@ -8,6 +8,9 @@ import {
   validateSession,
   commitSession,
   getHelpers,
+  rollbackBatch,
+  triggerPreMigrationBackup,
+  getImportBatches,
 } from "../controller/importController.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 
@@ -49,5 +52,8 @@ router.post("/select-sheet", authMiddleware, selectSheet);
 router.get("/helpers", authMiddleware, getHelpers);
 router.post("/validate", authMiddleware, validateSession);
 router.post("/commit", authMiddleware, commitSession);
+router.post("/rollback", authMiddleware, rollbackBatch);
+router.post("/backup", authMiddleware, triggerPreMigrationBackup);
+router.get("/batches", authMiddleware, getImportBatches);
 
 export default router;
