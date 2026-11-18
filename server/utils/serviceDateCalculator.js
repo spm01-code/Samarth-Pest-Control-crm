@@ -71,6 +71,25 @@ export const normalizeFrequency = (freq) => {
   }
   if (lower === "quarterly" || lower === "quarter") return "Quarterly";
   if (
+    lower === "half-yearly" ||
+    lower === "halfyearly" ||
+    lower === "half yearly" ||
+    lower === "2 services yearly" ||
+    lower === "2 service yearly" ||
+    lower === "2 services"
+  ) {
+    return "Half-Yearly";
+  }
+  if (
+    lower === "yearly" ||
+    lower === "annual" ||
+    lower === "annually" ||
+    lower === "1 service yearly" ||
+    lower === "1 services yearly"
+  ) {
+    return "Yearly";
+  }
+  if (
     lower === "3 services yearly" ||
     lower === "3 service yearly" ||
     lower === "3 services" ||
@@ -98,6 +117,7 @@ export const isMultiDateFrequency = (frequency) => {
   const norm = normalizeFrequency(frequency);
   return (
     norm === "Quarterly" ||
+    norm === "Half-Yearly" ||
     norm === "Yearly 3 services" ||
     norm === "3 Services Yearly" ||
     norm === "twice a week"
@@ -167,6 +187,27 @@ export const calculateServiceDates = (
         (d) => d.getTime() >= referenceDate.getTime()
       );
       nextServiceDate = upcoming || upcomingServiceDates[0];
+      break;
+    }
+
+    case "Half-Yearly": {
+      // 2 services over 1 year: +6m, +12m
+      const h1 = addMonthsClamped(serviceDate, 6);
+      const h2 = addMonthsClamped(serviceDate, 12);
+      upcomingServiceDates = [h1, h2];
+
+      const upcoming = upcomingServiceDates.find(
+        (d) => d.getTime() >= referenceDate.getTime()
+      );
+      nextServiceDate = upcoming || upcomingServiceDates[0];
+      break;
+    }
+
+    case "Yearly": {
+      // 1 service per year: +12m
+      const y1 = addMonthsClamped(serviceDate, 12);
+      upcomingServiceDates = [y1];
+      nextServiceDate = y1;
       break;
     }
 

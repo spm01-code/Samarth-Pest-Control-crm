@@ -431,6 +431,17 @@ function EditServiceModal({ service, onClose }) {
       payload.employee = null;
     }
 
+    // Strip client-side temporary occurrence IDs (e.g. "occ-1", "occ-...") while preserving valid MongoDB ObjectIds
+    if (Array.isArray(payload.serviceOccurrences)) {
+      payload.serviceOccurrences = payload.serviceOccurrences.map((occ) => {
+        const cleanOcc = { ...occ };
+        if (typeof cleanOcc._id === "string" && cleanOcc._id.startsWith("occ-")) {
+          delete cleanOcc._id;
+        }
+        return cleanOcc;
+      });
+    }
+
     try {
       await dispatch(
         updateService({

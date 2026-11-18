@@ -261,6 +261,20 @@ export const createService = async (req, res) => {
             remark: "",
           },
         ];
+      } else {
+        payload.serviceOccurrences = payload.serviceOccurrences.map((occ) => {
+          const cleanOcc = { ...occ };
+          if (cleanOcc._id !== undefined) {
+            if (
+              !cleanOcc._id ||
+              !mongoose.Types.ObjectId.isValid(cleanOcc._id) ||
+              String(cleanOcc._id).startsWith("occ-")
+            ) {
+              delete cleanOcc._id;
+            }
+          }
+          return cleanOcc;
+        });
       }
     } else if (existingCustomer && existingCustomer.jobNo && !payload.jobNo) {
       payload.jobNo = existingCustomer.jobNo;
@@ -573,6 +587,16 @@ export const updateService = async (req, res) => {
     if (Array.isArray(payload.serviceOccurrences)) {
       payload.serviceOccurrences = payload.serviceOccurrences.map((occ, idx) => {
         const cleanOcc = { ...occ };
+        // Strip temporary client-generated IDs (e.g. "occ-1", "occ-...") and invalid ObjectIds so Mongoose generates valid ObjectIds
+        if (cleanOcc._id !== undefined) {
+          if (
+            !cleanOcc._id ||
+            !mongoose.Types.ObjectId.isValid(cleanOcc._id) ||
+            String(cleanOcc._id).startsWith("occ-")
+          ) {
+            delete cleanOcc._id;
+          }
+        }
         if (cleanOcc.operatorName) {
           cleanOcc.operatorName = String(cleanOcc.operatorName).trim();
         }
