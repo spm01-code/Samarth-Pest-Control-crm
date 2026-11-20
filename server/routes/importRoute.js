@@ -13,8 +13,13 @@ import {
   getImportBatches,
 } from "../controller/importController.js";
 import authMiddleware from "../middleware/authMiddleware.js";
+import { requireAdmin } from "../middleware/rbacMiddleware.js";
 
 const router = express.Router();
+
+// Import and migration tools are strictly Admin-only
+router.use(authMiddleware);
+router.use(requireAdmin);
 
 // Ensure upload directory exists
 const uploadDir = path.join(process.cwd(), "uploads", "imports");

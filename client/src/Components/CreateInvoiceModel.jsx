@@ -198,10 +198,10 @@ function CreateInvoiceModal({
   const currentYear = new Date().getFullYear();
   const currentMonth = new Date().getMonth();
   const fyStart = currentMonth >= 3 ? currentYear : currentYear - 1;
-  const currentFY = `${fyStart}-${fyStart + 1}`;
+  const currentFY = `${fyStart}-${String(fyStart + 1).slice(-2)}`;
   const seriesPreview = isGstInvoice
-    ? `SPM/${currentFY}/01`
-    : `SPMJ/${currentFY}/01`;
+    ? `SPM/01/${currentFY}`
+    : `SPMJ/01/${currentFY}`;
   const isInterState = isGstInvoice && formData.taxMode === "INTER_STATE";
   const cgst = isGstInvoice && !isInterState ? (subtotal * Number(formData.cgstPercentage || 0)) / 100 : 0;
   const sgst = isGstInvoice && !isInterState ? (subtotal * Number(formData.sgstPercentage || 0)) / 100 : 0;

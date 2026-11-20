@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { logout } from "../slices/authSlice";
+import { performLogout } from "../slices/authSlice";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   HiOutlineBellAlert,
@@ -16,10 +16,11 @@ import {
   HiOutlineArrowRightOnRectangle,
   HiOutlineCog6Tooth,
   HiOutlineArrowUpTray,
+  HiOutlineUser,
 } from "react-icons/hi2";
 import logo from "/logo.png";
 
-const sections = [
+const allSections = [
   {
     label: "CRM",
     icon: HiOutlineHomeModern,
@@ -41,6 +42,7 @@ const sections = [
   {
     label: "HR",
     icon: HiOutlineUserGroup,
+    adminOnly: true,
     items: [
       { name: "Employees", path: "/employees", icon: HiOutlineUsers },
       { name: "Attendance", path: "/attendance", icon: HiOutlineDocumentText },
@@ -53,17 +55,24 @@ function Sidebar() {
   const location = useLocation();
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
+
+  const role = String(user?.role || "employee").toLowerCase().trim();
+  const isAdmin = role === "admin";
+
+  // Filter sections: Hide HR section from employee navigation
+  const visibleSections = allSections.filter((sec) => !sec.adminOnly || isAdmin);
+
   const [expanded, setExpanded] = useState(() =>
     Object.fromEntries(
-      sections.map((section) => [
+      allSections.map((section) => [
         section.label,
         true,
       ]),
     ),
   );
 
-  const handleLogout = () => {
-    dispatch(logout());
+  const handleLogout = async () => {
+    await dispatch(performLogout());
     navigate("/login");
   };
 
@@ -101,21 +110,24 @@ function Sidebar() {
           Alerts
         </NavLink>
 
-        <NavLink
-          to="/upload"
-          className={({ isActive }) =>
-            `flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition active:translate-y-[2px] active:shadow-none lg:mb-2 ${
-              isActive
-                ? "bg-cyan-400/12 text-cyan-200 ring-1 ring-inset ring-cyan-300/20 shadow-[0_3px_0_0_rgba(34,211,238,0.2)]"
-                : "text-slate-300 hover:bg-white/6 hover:text-white hover:shadow-[0_3px_0_0_rgba(255,255,255,0.05)]"
-            }`
-          }
-        >
-          <HiOutlineArrowUpTray className="size-5" />
-          Upload
-        </NavLink>
+        {/* Upload is strictly Admin-only */}
+        {isAdmin && (
+          <NavLink
+            to="/upload"
+            className={({ isActive }) =>
+              `flex shrink-0 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition active:translate-y-[2px] active:shadow-none lg:mb-2 ${
+                isActive
+                  ? "bg-cyan-400/12 text-cyan-200 ring-1 ring-inset ring-cyan-300/20 shadow-[0_3px_0_0_rgba(34,211,238,0.2)]"
+                  : "text-slate-300 hover:bg-white/6 hover:text-white hover:shadow-[0_3px_0_0_rgba(255,255,255,0.05)]"
+              }`
+            }
+          >
+            <HiOutlineArrowUpTray className="size-5" />
+            Upload
+          </NavLink>
+        )}
 
-        {sections.map((section) => {
+        {visibleSections.map((section) => {
           const SectionIcon = section.icon;
           const isExpanded = expanded[section.label];
           const hasActiveItem = section.items.some((item) =>
@@ -169,17 +181,47 @@ function Sidebar() {
       </nav>
 
       <div className="hidden border-t border-white/8 p-4 lg:block">
-        <button onClick={() => navigate("/settings")} className="flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition hover:bg-white/6 hover:shadow-[0_3px_0_0_rgba(255,255,255,0.05)] active:translate-y-[2px] active:shadow-none">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-800/80 text-sm font-bold text-white shadow-lg shadow-cyan-950/30">
-            {user?.name?.charAt(0)?.toUpperCase() || "A"}
+        <button
+          onClick={() => navigate(isAdmin ? "/settings" : "/profile")}
+          className="flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition hover:bg-white/6 hover:shadow-[0_3px_0_0_rgba(255,255,255,0.05)] active:translate-y-[2px] active:shadow-none"
+        >
+          <div
+            className={`flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white shadow-lg ${
+              isAdmin
+                ? "bg-gradient-to-br from-red-500 to-slate-900 shadow-red-950/40 ring-1 ring-red-400/30"
+                : "bg-gradient-to-br from-blue-500 to-blue-800/80 shadow-cyan-950/30 ring-1 ring-blue-400/30"
+            }`}
+          >
+            {user?.name?.charAt(0)?.toUpperCase() || (isAdmin ? "A" : "E")}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-slate-100">{user?.name || "Admin"}</p>
-            <p className="truncate text-xs text-slate-500">{user?.email || "Administrator"}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-sm font-semibold text-slate-100">{user?.name || (isAdmin ? "Admin" : "Employee")}</p>
+            </div>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded ${
+                  isAdmin
+                    ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                    : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                }`}
+              >
+                {isAdmin ? "Admin" : "Employee"}
+              </span>
+              <p className="truncate text-xs text-slate-500">{user?.email}</p>
+            </div>
           </div>
-          <HiOutlineCog6Tooth className="size-5 text-slate-500" />
+          {isAdmin ? (
+            <HiOutlineCog6Tooth className="size-5 text-slate-500 shrink-0" />
+          ) : (
+            <HiOutlineUser className="size-5 text-slate-500 shrink-0" />
+          )}
         </button>
-        <button onClick={handleLogout} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700/70 px-3 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-200 hover:shadow-[0_3px_0_0_rgba(239,68,68,0.15)] active:translate-y-[2px] active:shadow-none">
+
+        <button
+          onClick={handleLogout}
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700/70 px-3 py-2.5 text-sm font-semibold text-slate-300 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-200 hover:shadow-[0_3px_0_0_rgba(239,68,68,0.15)] active:translate-y-[2px] active:shadow-none cursor-pointer"
+        >
           <HiOutlineArrowRightOnRectangle className="size-5" />
           Log out
         </button>

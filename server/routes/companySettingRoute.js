@@ -1,7 +1,6 @@
 import express from "express";
-
 import authMiddleware from "../middleware/authMiddleware.js";
-
+import { requireAdmin } from "../middleware/rbacMiddleware.js";
 import {
   getCompanySettings,
   updateCompanySettings,
@@ -11,8 +10,10 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
+// Permitted for Employee and Admin (view settings)
 router.get("/", getCompanySettings);
 
-router.put("/", updateCompanySettings);
+// Admin Only (modify system configuration)
+router.put("/", requireAdmin, updateCompanySettings);
 
 export default router;

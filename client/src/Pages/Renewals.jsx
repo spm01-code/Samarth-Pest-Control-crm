@@ -12,10 +12,12 @@ import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
 import { BASE_URL } from "../API/apiConfig";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
+import usePermission from "../hooks/usePermission";
 
 function Renewals() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { isAdmin } = usePermission();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [previewRenewalId, setPreviewRenewalId] = useState(null);
@@ -145,14 +147,16 @@ function Renewals() {
                 >
                   <HiOutlinePrinter className="size-3.5 shrink-0" />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(renewal._id)}
-                  className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 cursor-pointer"
-                  title="Delete Contract Renewal"
-                >
-                  <HiOutlineTrash className="size-3.5 shrink-0" />
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(renewal._id)}
+                    className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 cursor-pointer"
+                    title="Delete Contract Renewal"
+                  >
+                    <HiOutlineTrash className="size-3.5 shrink-0" />
+                  </button>
+                )}
               </div>
             </td>
           </tr>

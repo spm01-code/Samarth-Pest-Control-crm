@@ -13,10 +13,12 @@ import { getErrorMessage } from "../utils/errorHandler";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
+import usePermission from "../hooks/usePermission";
 
 function InvoicePage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { isAdmin } = usePermission();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("All");
@@ -273,14 +275,16 @@ function InvoicePage() {
                   <HiOutlineUser className="size-3.5 shrink-0" />
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleDelete(invoice._id)}
-                  className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 cursor-pointer"
-                  title="Delete Invoice"
-                >
-                  <HiOutlineTrash className="size-3.5 shrink-0" />
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(invoice._id)}
+                    className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 cursor-pointer"
+                    title="Delete Invoice"
+                  >
+                    <HiOutlineTrash className="size-3.5 shrink-0" />
+                  </button>
+                )}
               </div>
             </td>
           </tr>

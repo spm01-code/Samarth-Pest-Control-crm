@@ -115,6 +115,7 @@ app.get("/api", (req, res) => {
   });
 });
 app.use("/api/admin", adminRoutes);
+app.use("/api/secure-access", adminRoutes);
 app.use("/api/customers", authMiddleware, customerRoutes);
 app.use("/api/employees", authMiddleware, employeeRoutes);
 app.use("/api/services", authMiddleware, serviceRoutes);

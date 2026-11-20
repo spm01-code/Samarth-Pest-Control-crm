@@ -875,7 +875,7 @@ function EditServiceModal({ service, onClose }) {
                 <input
                   type="text"
                   name="jobNo"
-                  placeholder="e.g. A/08 or SPM/OTJ/..."
+                  placeholder="e.g. Job No/2026/01"
                   value={formData.jobNo}
                   onChange={handleChange}
                   className="w-full border border-amber-300 rounded-lg p-2.5 bg-white font-mono font-bold text-amber-800 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"

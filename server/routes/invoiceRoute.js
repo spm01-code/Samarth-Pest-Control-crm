@@ -9,16 +9,22 @@ import {
   generateInvoiceDocxFile,
   generateInvoicePdf,
 } from "../controller/invoiceController.js";
+import { requireAdmin, blockEmployeeMutations } from "../middleware/rbacMiddleware.js";
 
 const router = express.Router();
 
+router.use(blockEmployeeMutations);
+
+// Allowed for Employee and Admin
 router.post("/create", createInvoice);
 router.get("/service/:serviceId", getInvoiceByServiceId);
 router.get("/:id/docx", generateInvoiceDocxFile);
 router.get("/:id/pdf", generateInvoicePdf);
 router.get("/", getInvoices);
 router.get("/:id", getInvoiceById);
-router.put("/:id", updateInvoice);
-router.delete("/:id", deleteInvoice);
+
+// Admin Only: Editing and deleting invoices
+router.put("/:id", requireAdmin, updateInvoice);
+router.delete("/:id", requireAdmin, deleteInvoice);
 
 export default router;

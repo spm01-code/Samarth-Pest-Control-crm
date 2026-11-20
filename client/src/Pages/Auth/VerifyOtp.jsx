@@ -22,7 +22,16 @@ function VerifyOtp() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  const email = location.state?.email;
+  // Resolve email from state, URL query parameter, or sessionStorage
+  const queryParams = new URLSearchParams(location.search);
+  const initialEmail =
+    location.state?.email ||
+    queryParams.get("email") ||
+    sessionStorage.getItem("pendingVerificationEmail") ||
+    "";
+
+  const [email, setEmail] = useState(initialEmail.trim().toLowerCase());
+  const [isEditingEmail, setIsEditingEmail] = useState(!initialEmail);
 
   const { loading, error } = useSelector(
     (state) => state.auth
@@ -31,6 +40,12 @@ function VerifyOtp() {
   const [otp, setOtp] = useState("");
   const [isResending, setIsResending] = useState(false);
   const [countdown, setCountdown] = useState(60);
+
+  useEffect(() => {
+    if (email) {
+      sessionStorage.setItem("pendingVerificationEmail", email);
+    }
+  }, [email]);
 
   useEffect(() => {
     let timer;
@@ -44,16 +59,22 @@ function VerifyOtp() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!email) {
+      toast.error("Please enter your email address");
+      setIsEditingEmail(true);
+      return;
+    }
     if (otp.length !== 6 || loading) return;
 
     const result = await dispatch(
       verifyOtp({
-        email,
-        otp,
+        email: email.trim().toLowerCase(),
+        otp: otp.trim(),
       })
     );
 
     if (verifyOtp.fulfilled.match(result)) {
+      sessionStorage.removeItem("pendingVerificationEmail");
       toast.success("Email verified successfully! You can now log in.");
       navigate("/login");
     } else {
@@ -66,7 +87,7 @@ function VerifyOtp() {
 
     setIsResending(true);
     try {
-      await resendRegistrationOTP({ email });
+      await resendRegistrationOTP({ email: email.trim().toLowerCase() });
       toast.success("Verification code resent to your email.");
       setCountdown(60);
       setOtp("");
@@ -85,23 +106,54 @@ function VerifyOtp() {
           Verify Email
         </h1>
 
-        <p className="text-slate-500 mb-6 text-sm">
-          Enter the 6-digit code sent to{" "}
-          <span className="font-semibold text-slate-800">{maskEmail(email) || "your email"}</span>
-        </p>
+        <div className="mb-6 text-sm text-slate-500">
+          {email && !isEditingEmail ? (
+            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+              <span className="text-xs text-slate-700 font-medium">
+                Sent to: <strong className="text-slate-900">{maskEmail(email)}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsEditingEmail(true)}
+                className="text-xs text-cyan-700 hover:text-cyan-800 underline font-medium"
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                Your Email Address
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value.trim().toLowerCase())}
+                placeholder="Enter your registered email"
+                required
+                className="w-full border border-slate-300 rounded-lg p-2.5 text-sm transition focus:border-cyan-600 outline-none"
+              />
+            </div>
+          )}
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            value={otp}
-            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-            placeholder="••••••"
-            className="w-full border border-slate-300 rounded-lg p-3 text-center text-2xl font-mono tracking-[0.5em] font-bold text-slate-900 transition focus:border-cyan-600 outline-none"
-            autoFocus
-          />
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1 text-center">
+              6-Digit Verification Code
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="••••••"
+              className="w-full border border-slate-300 rounded-lg p-3 text-center text-2xl font-mono tracking-[0.5em] font-bold text-slate-900 transition focus:border-cyan-600 outline-none"
+              autoFocus
+            />
+          </div>
 
           {error && (
             <p className="text-red-500 text-sm text-center font-medium bg-red-50 p-2.5 rounded-lg border border-red-100">
@@ -110,7 +162,7 @@ function VerifyOtp() {
           )}
 
           <button
-            disabled={otp.length !== 6 || loading}
+            disabled={otp.length !== 6 || loading || !email}
             className="w-full bg-cyan-600 text-white py-3 rounded-lg font-semibold hover:bg-cyan-700 transition disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Verifying..." : "Verify OTP"}

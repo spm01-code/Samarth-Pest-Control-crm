@@ -26,6 +26,13 @@ import {
   uploadTemplateAPI,
 } from "../API/templateAPI";
 import {
+  fetchUsersAPI,
+  updateUserRoleAPI,
+  toggleUserStatusAPI,
+  fetchAuditLogsAPI,
+} from "../API/authAPI";
+import { HiOutlineUserGroup } from "react-icons/hi2";
+import {
   fetchCompanySettingsAPI,
   updateCompanySettingsAPI,
 } from "../API/companySettingAPI";
@@ -189,9 +196,86 @@ function Settings() {
     }
   };
 
+  // 5. Users State
+  const [usersList, setUsersList] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [updatingUserId, setUpdatingUserId] = useState(null);
+
+  const loadUsers = async () => {
+    if (!token) return;
+    setLoadingUsers(true);
+    try {
+      const data = await executeWithRefresh((t) => fetchUsersAPI(t));
+      if (data?.users) {
+        setUsersList(data.users);
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to load users");
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const handleRoleChange = async (targetId, newRole) => {
+    if (!window.confirm(`Are you sure you want to change this user's role to ${newRole.toUpperCase()}?`)) {
+      return;
+    }
+    try {
+      setUpdatingUserId(targetId);
+      const data = await executeWithRefresh((t) => updateUserRoleAPI(targetId, newRole, t));
+      toast.success(data.message || "Role updated successfully");
+      await loadUsers();
+    } catch (err) {
+      toast.error(err.message || "Failed to update user role");
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const handleStatusToggle = async (targetId, currentStatus) => {
+    const newStatus = !currentStatus;
+    const actionText = newStatus ? "activate" : "deactivate";
+    if (!window.confirm(`Are you sure you want to ${actionText} this user's account?`)) {
+      return;
+    }
+    try {
+      setUpdatingUserId(targetId);
+      const data = await executeWithRefresh((t) => toggleUserStatusAPI(targetId, newStatus, t));
+      toast.success(data.message || `User account ${actionText}d successfully`);
+      await loadUsers();
+    } catch (err) {
+      toast.error(err.message || `Failed to ${actionText} user account`);
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  // 6. Security & Audit State
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+
+  const loadAuditLogs = async () => {
+    if (!token) return;
+    setLoadingAudit(true);
+    try {
+      const data = await executeWithRefresh((t) => fetchAuditLogsAPI(t));
+      if (data?.logs) {
+        setAuditLogs(data.logs);
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to load audit logs");
+    } finally {
+      setLoadingAudit(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === "jobNumbers") {
       loadJnStats();
+    } else if (activeTab === "users") {
+      loadUsers();
+    } else if (activeTab === "audit") {
+      loadAuditLogs();
     }
   }, [activeTab]);
 
@@ -335,7 +419,7 @@ function Settings() {
     const isSingleYear = /^\d{4}$/.test(trimmedYear) && Number(trimmedYear) >= 2000 && Number(trimmedYear) <= 2099;
     const isFinancialYear = /^\d{4}[-/]\d{2,4}$/.test(trimmedYear);
     if (!isSingleYear && !isFinancialYear) {
-      toast.warning("Please enter a valid 4-digit year (e.g. 2026) or financial year (e.g. 2026-2027).");
+      toast.warning("Please enter a valid 4-digit year (e.g. 2026) or financial year (e.g. 2026-27).");
       return;
     }
 
@@ -511,6 +595,28 @@ function Settings() {
             <HiOutlineHashtag className="size-5" />
             Job Numbers
           </button>
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-medium transition cursor-pointer ${
+              activeTab === "users"
+                ? "bg-blue-50 text-blue-700 font-semibold"
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <HiOutlineUserGroup className="size-5" />
+            User Management
+          </button>
+          <button
+            onClick={() => setActiveTab("audit")}
+            className={`flex items-center gap-2.5 px-5 py-3 rounded-xl text-sm font-medium transition cursor-pointer ${
+              activeTab === "audit"
+                ? "bg-blue-50 text-blue-700 font-semibold"
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <HiOutlineShieldCheck className="size-5" />
+            Security & Audit
+          </button>
         </div>
 
         {/* Content Pane */}
@@ -674,7 +780,7 @@ function Settings() {
                         </span>
                       </h3>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Change your login password with secure email verification code delivered via Resend
+                        Change your login password with secure email verification code delivered to your registered email
                       </p>
                     </div>
                     <button
@@ -723,7 +829,7 @@ function Settings() {
                       value={numberingYear}
                       onChange={(e) => setNumberingYear(e.target.value)}
                       className="w-40 px-4 py-2.5 rounded-xl border border-slate-300 bg-white font-mono text-center font-bold text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-sm shadow-sm transition"
-                      placeholder="e.g. 2026 or 2026-2027"
+                      placeholder="e.g. 2026 or 2026-27"
                     />
                   </div>
                 </div>
@@ -735,108 +841,129 @@ function Settings() {
                     <span>Live Document Previews (Read-Only)</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {/* 1. Invoice */}
-                    <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                          Invoice
-                        </span>
-                        <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
-                          Fixed: SPMJ/
-                        </span>
-                      </div>
-                      <div className="font-mono text-sm font-bold text-blue-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
-                        {numberingConfig?.previews?.INVOICE?.sample ||
-                          (numberingYear
-                            ? `SPMJ/${
-                                String(numberingYear).includes("-")
-                                  ? numberingYear
-                                  : `${numberingYear}-${Number(numberingYear) + 1}`
-                              }/01`
-                            : "SPMJ/2026-2027/01")}
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        Financial year sequential series (e.g. 2026-2027)
-                      </p>
-                    </div>
+                  {(() => {
+                    const baseYearStr = String(numberingYear || new Date().getFullYear()).split("-")[0].trim();
+                    const baseYearNum = Number(baseYearStr) || new Date().getFullYear();
+                    const formattedFY = `${baseYearNum}-${String(baseYearNum + 1).slice(-2)}`;
 
-                    {/* 2. PC Quotation */}
-                    <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                          PC Quotation
-                        </span>
-                        <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full">
-                          Fixed: SPM/PC/
-                        </span>
-                      </div>
-                      <div className="font-mono text-sm font-bold text-purple-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
-                        {numberingConfig?.previews?.PC_QUOTATION?.sample ||
-                          `SPM/PC/${String(numberingYear || "YYYY").split("-")[0]}/0001`}
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        Pest Control quotation series
-                      </p>
-                    </div>
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {/* 1. Non-GST Invoice */}
+                        <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Invoice — Non-GST
+                            </span>
+                            <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
+                              Fixed: SPMJ/
+                            </span>
+                          </div>
+                          <div className="font-mono text-sm font-bold text-blue-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                            {numberingConfig?.previews?.NON_GST_INVOICE?.sample ||
+                              `SPMJ/01/${formattedFY}`}
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            Non-GST financial year sequential series (e.g. 2026-27)
+                          </p>
+                        </div>
 
-                    {/* 3. ATT Quotation */}
-                    <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                          ATT Quotation
-                        </span>
-                        <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
-                          Fixed: SPM/ATT/
-                        </span>
-                      </div>
-                      <div className="font-mono text-sm font-bold text-indigo-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
-                        {numberingConfig?.previews?.ATT_QUOTATION?.sample ||
-                          `SPM/ATT/${String(numberingYear || "YYYY").split("-")[0]}/0001`}
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        Anti-Termite Treatment quotation series
-                      </p>
-                    </div>
+                        {/* 2. Tax Invoice - GST */}
+                        <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Tax Invoice — GST
+                            </span>
+                            <span className="text-[10px] bg-cyan-50 text-cyan-700 font-bold px-2 py-0.5 rounded-full">
+                              Fixed: SPM/
+                            </span>
+                          </div>
+                          <div className="font-mono text-sm font-bold text-cyan-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                            {numberingConfig?.previews?.GST_INVOICE?.sample ||
+                              `SPM/01/${formattedFY}`}
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            GST tax invoice financial year sequential series (e.g. 2026-27)
+                          </p>
+                        </div>
 
-                    {/* 4. Contract Renewal */}
-                    <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                          Contract Renewal
-                        </span>
-                        <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
-                          Fixed: SPM/CR/
-                        </span>
-                      </div>
-                      <div className="font-mono text-sm font-bold text-emerald-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
-                        {numberingConfig?.previews?.CONTRACT_RENEWAL?.sample ||
-                          `SPM/CR/${String(numberingYear || "YYYY").split("-")[0]}/0001`}
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        Yearly contract renewal series
-                      </p>
-                    </div>
+                        {/* 3. PC Quotation */}
+                        <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              PC Quotation
+                            </span>
+                            <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full">
+                              Fixed: SPM/PC/
+                            </span>
+                          </div>
+                          <div className="font-mono text-sm font-bold text-purple-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                            {numberingConfig?.previews?.PC_QUOTATION?.sample ||
+                              `SPM/PC/${baseYearStr}/01`}
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            Pest Control quotation series
+                          </p>
+                        </div>
 
-                    {/* 5. One Time Job */}
-                    <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                          One Time Job
-                        </span>
-                        <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded-full">
-                          Fixed: Job No/
-                        </span>
+                        {/* 4. ATT Quotation */}
+                        <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              ATT Quotation
+                            </span>
+                            <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
+                              Fixed: SPM/ATT/
+                            </span>
+                          </div>
+                          <div className="font-mono text-sm font-bold text-indigo-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                            {numberingConfig?.previews?.ATT_QUOTATION?.sample ||
+                              `SPM/ATT/${baseYearStr}/01`}
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            Anti-Termite Treatment quotation series
+                          </p>
+                        </div>
+
+                        {/* 5. Contract Renewal */}
+                        <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              Contract Renewal
+                            </span>
+                            <span className="text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full">
+                              Fixed: SPM/CR/
+                            </span>
+                          </div>
+                          <div className="font-mono text-sm font-bold text-emerald-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                            {numberingConfig?.previews?.CONTRACT_RENEWAL?.sample ||
+                              `SPM/CR/${baseYearStr}/01`}
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            Yearly contract renewal series
+                          </p>
+                        </div>
+
+                        {/* 6. One Time Job */}
+                        <div className="border border-slate-200/80 rounded-xl p-4 bg-white shadow-sm space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                              One Time Job
+                            </span>
+                            <span className="text-[10px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded-full">
+                              Fixed: Job No/
+                            </span>
+                          </div>
+                          <div className="font-mono text-sm font-bold text-amber-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
+                            {numberingConfig?.previews?.ONE_TIME_JOB?.sample ||
+                              `Job No/${baseYearStr}/01`}
+                          </div>
+                          <p className="text-[11px] text-slate-400">
+                            Single execution one-time job series
+                          </p>
+                        </div>
                       </div>
-                      <div className="font-mono text-sm font-bold text-amber-600 bg-slate-50 px-3 py-2 rounded-lg border border-slate-100">
-                        {numberingConfig?.previews?.ONE_TIME_JOB?.sample ||
-                          `Job No/${String(numberingYear || "YYYY").split("-")[0]}/0001`}
-                      </div>
-                      <p className="text-[11px] text-slate-400">
-                        Single execution one-time job series
-                      </p>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="flex justify-end pt-4 border-t border-slate-100">
@@ -1221,6 +1348,237 @@ function Settings() {
                           Total managed slots: <strong className="font-mono">{lastSyncResult.totalManaged}</strong> ({lastSyncResult.assigned} assigned, {lastSyncResult.available} vacant ready for reuse, {lastSyncResult.legacy} legacy). All {lastSyncResult.sequencesSynced} prefix sequences verified.
                         </p>
                       </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: USER MANAGEMENT */}
+          {activeTab === "users" && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200/50 overflow-hidden">
+                <div className="border-b border-slate-100 p-6 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                      <HiOutlineUserGroup className="text-blue-600" />
+                      CRM Users & Access Roles
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Manage registered CRM user roles, promote Employees to Admin, or toggle account status.
+                    </p>
+                  </div>
+                  <button
+                    onClick={loadUsers}
+                    disabled={loadingUsers}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-4 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <HiOutlineArrowPath className={`size-3.5 ${loadingUsers ? "animate-spin" : ""}`} />
+                    Refresh
+                  </button>
+                </div>
+
+                <div className="p-6">
+                  {loadingUsers ? (
+                    <div className="py-12 text-center text-slate-500 text-sm">Loading users...</div>
+                  ) : usersList.length === 0 ? (
+                    <div className="py-12 text-center text-slate-500 text-sm">No registered users found</div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                      <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                          <tr>
+                            <th className="py-3 px-4">User</th>
+                            <th className="py-3 px-4">Email</th>
+                            <th className="py-3 px-4">Phone</th>
+                            <th className="py-3 px-4">Role</th>
+                            <th className="py-3 px-4">Status</th>
+                            <th className="py-3 px-4">Verified</th>
+                            <th className="py-3 px-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {usersList.map((u) => {
+                            const isCurrentUser = user?._id === u.id || user?.id === u.id;
+                            const isUserAdmin = u.role === "admin";
+                            const isBusy = updatingUserId === u.id;
+
+                            return (
+                              <tr key={u.id} className="hover:bg-slate-50/70 transition">
+                                <td className="py-3.5 px-4 font-semibold text-slate-900">
+                                  <div className="flex items-center gap-2.5">
+                                    <div
+                                      className={`size-8 rounded-full flex items-center justify-center font-bold text-xs text-white ${
+                                        isUserAdmin ? "bg-red-600" : "bg-blue-600"
+                                      }`}
+                                    >
+                                      {u.name?.charAt(0)?.toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <span>{u.name}</span>
+                                      {isCurrentUser && (
+                                        <span className="ml-1.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                          You
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-3.5 px-4 font-mono text-xs text-slate-600">{u.email}</td>
+                                <td className="py-3.5 px-4 text-slate-600">{u.phone || "—"}</td>
+                                <td className="py-3.5 px-4">
+                                  <span
+                                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold capitalize border ${
+                                      isUserAdmin
+                                        ? "bg-red-50 text-red-700 border-red-200"
+                                        : "bg-blue-50 text-blue-700 border-blue-200"
+                                    }`}
+                                  >
+                                    {u.role}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4">
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                                      u.isActive !== false
+                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                        : "bg-red-50 text-red-700 border border-red-200"
+                                    }`}
+                                  >
+                                    {u.isActive !== false ? "Active" : "Inactive"}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4">
+                                  <span
+                                    className={`text-xs font-medium ${
+                                      u.isVerified ? "text-emerald-600" : "text-amber-600"
+                                    }`}
+                                  >
+                                    {u.isVerified ? "✓ Verified" : "⏳ Pending OTP"}
+                                  </span>
+                                </td>
+                                <td className="py-3.5 px-4 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={isBusy}
+                                      onClick={() => handleRoleChange(u.id, isUserAdmin ? "employee" : "admin")}
+                                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition cursor-pointer disabled:opacity-50 ${
+                                        isUserAdmin
+                                          ? "border-slate-300 text-slate-700 hover:bg-slate-100"
+                                          : "border-red-300 bg-red-50 text-red-700 hover:bg-red-100"
+                                      }`}
+                                    >
+                                      {isBusy
+                                        ? "Updating..."
+                                        : isUserAdmin
+                                        ? "Demote to Employee"
+                                        : "Promote to Admin"}
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      disabled={isBusy}
+                                      onClick={() => handleStatusToggle(u.id, u.isActive !== false)}
+                                      className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition cursor-pointer disabled:opacity-50 ${
+                                        u.isActive !== false
+                                          ? "border-red-200 text-red-600 hover:bg-red-50"
+                                          : "border-emerald-200 text-emerald-600 hover:bg-emerald-50"
+                                      }`}
+                                    >
+                                      {u.isActive !== false ? "Deactivate" : "Activate"}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: SECURITY & AUDIT LOGS */}
+          {activeTab === "audit" && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200/50 overflow-hidden">
+                <div className="border-b border-slate-100 p-6 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                      <HiOutlineShieldCheck className="text-red-600" />
+                      Security Audit Trail
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Chronological audit log recording logins, logouts, role updates, and privileged operations.
+                    </p>
+                  </div>
+                  <button
+                    onClick={loadAuditLogs}
+                    disabled={loadingAudit}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-4 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <HiOutlineArrowPath className={`size-3.5 ${loadingAudit ? "animate-spin" : ""}`} />
+                    Refresh Logs
+                  </button>
+                </div>
+
+                <div className="p-6">
+                  {loadingAudit ? (
+                    <div className="py-12 text-center text-slate-500 text-sm">Loading audit logs...</div>
+                  ) : auditLogs.length === 0 ? (
+                    <div className="py-12 text-center text-slate-500 text-sm">No audit logs recorded yet</div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 max-h-[600px] overflow-y-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200 sticky top-0 z-10">
+                          <tr>
+                            <th className="py-3 px-3">Timestamp</th>
+                            <th className="py-3 px-3">Actor</th>
+                            <th className="py-3 px-3">Action</th>
+                            <th className="py-3 px-3">Module</th>
+                            <th className="py-3 px-3">Status</th>
+                            <th className="py-3 px-3">IP Address</th>
+                            <th className="py-3 px-3">Metadata</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {auditLogs.map((log) => (
+                            <tr key={log._id} className="hover:bg-slate-50/70 transition">
+                              <td className="py-2.5 px-3 whitespace-nowrap text-slate-600">
+                                {formatTimestamp ? formatTimestamp(log.createdAt) : new Date(log.createdAt).toLocaleString()}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className="font-medium text-slate-900 block">{log.userEmail || "Anonymous"}</span>
+                                <span className="text-[10px] text-slate-400 capitalize">{log.userRole}</span>
+                              </td>
+                              <td className="py-2.5 px-3 font-mono font-bold text-slate-800">{log.action}</td>
+                              <td className="py-2.5 px-3 font-medium text-slate-600">{log.module}</td>
+                              <td className="py-2.5 px-3">
+                                <span
+                                  className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                    log.status === "SUCCESS"
+                                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                      : log.status === "BLOCKED"
+                                      ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                      : "bg-red-50 text-red-700 border border-red-200"
+                                  }`}
+                                >
+                                  {log.status}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-slate-500">{log.ipAddress || "—"}</td>
+                              <td className="py-2.5 px-3 text-slate-500 max-w-xs truncate">
+                                {log.details ? JSON.stringify(log.details) : "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>

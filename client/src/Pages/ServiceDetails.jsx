@@ -27,11 +27,13 @@ import {
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateOnly as formatDate, formatTimestamp } from "../utils/dateUtils";
+import usePermission from "../hooks/usePermission";
 
 function ServiceDetails() {
   const { id } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { isAdmin } = usePermission();
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -540,14 +542,16 @@ function ServiceDetails() {
                 Visual history of all service visits and complaints recorded under this One Time Job
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowEditModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
-            >
-              <HiOutlinePlus className="w-4 h-4" />
-              Add / Edit Service Records
-            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setShowEditModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+              >
+                <HiOutlinePlus className="w-4 h-4" />
+                Add / Edit Service Records
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-slate-200">
@@ -560,7 +564,7 @@ function ServiceDetails() {
                   <th className="py-3 px-4">Operator Name</th>
                   <th className="py-3 px-4">Amount</th>
                   <th className="py-3 px-4">Payment Status</th>
-                  <th className="py-3 px-4 text-center">Actions</th>
+                  {isAdmin && <th className="py-3 px-4 text-center">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -595,16 +599,18 @@ function ServiceDetails() {
                         {occ.paymentStatus || "Unpaid"}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <button
-                        type="button"
-                        onClick={() => setShowEditModal(true)}
-                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium text-xs bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition cursor-pointer"
-                      >
-                        <HiOutlinePencilSquare className="w-3.5 h-3.5" />
-                        Edit
-                      </button>
-                    </td>
+                    {isAdmin && (
+                      <td className="py-3.5 px-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setShowEditModal(true)}
+                          className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium text-xs bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition cursor-pointer"
+                        >
+                          <HiOutlinePencilSquare className="w-3.5 h-3.5" />
+                          Edit
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -834,19 +840,23 @@ function ServiceDetails() {
           </>
         )}
 
-        <button
-          className="bg-cyan-600 hover:bg-cyan-700 text-white px-6 py-3 rounded-xl font-medium cursor-pointer"
-          onClick={() => setShowEditModal(true)}
-        >
-          {isOneTime ? "Edit One Time Job" : "Edit Service"}
-        </button>
+        {isAdmin && (
+          <>
+            <button
+              className="bg-cyan-600 hover:bg-cyan-700 text-white px-6 py-3 rounded-xl font-medium cursor-pointer"
+              onClick={() => setShowEditModal(true)}
+            >
+              {isOneTime ? "Edit One Time Job" : "Edit Service"}
+            </button>
 
-        <button
-          className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-medium cursor-pointer"
-          onClick={handleDelete}
-        >
-          {isOneTime ? "Delete One Time Job" : "Delete Service"}
-        </button>
+            <button
+              className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-xl font-medium cursor-pointer"
+              onClick={handleDelete}
+            >
+              {isOneTime ? "Delete One Time Job" : "Delete Service"}
+            </button>
+          </>
+        )}
       </div>
 
       {/* Record Payment Modal */}

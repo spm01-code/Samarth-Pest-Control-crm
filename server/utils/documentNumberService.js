@@ -2,21 +2,23 @@ import DocumentSequence from "../model/documentSequenceModel.js";
 import CompanySetting from "../model/companySettingModel.js";
 
 /**
- * Authoritative mapping of document types to fixed prefixes.
- * These are strictly backend-controlled constants and can NEVER be modified by users.
+ * Authoritative mapping of document types to fixed prefixes, padding, and layout order.
+ * Strictly backend-controlled constants.
  */
 export const DOCUMENT_CONFIG = Object.freeze({
-  GST_INVOICE: {
-    type: "GST_INVOICE",
-    label: "GST Invoice (Tax)",
-    prefix: "SPM/",
-    padding: 2,
-  },
   NON_GST_INVOICE: {
     type: "NON_GST_INVOICE",
-    label: "Non-GST Invoice",
+    label: "Invoice — Non-GST",
     prefix: "SPMJ/",
     padding: 2,
+    order: "SEQ_THEN_YEAR",
+  },
+  GST_INVOICE: {
+    type: "GST_INVOICE",
+    label: "Tax Invoice — GST",
+    prefix: "SPM/",
+    padding: 2,
+    order: "SEQ_THEN_YEAR",
   },
   INVOICE: {
     type: "INVOICE",
@@ -25,30 +27,35 @@ export const DOCUMENT_CONFIG = Object.freeze({
     padding: 2,
     nonGstPrefix: "SPMJ/",
     nonGstPadding: 2,
+    order: "SEQ_THEN_YEAR",
   },
   PC_QUOTATION: {
     type: "PC_QUOTATION",
     label: "PC Quotation",
     prefix: "SPM/PC/",
-    padding: 4,
+    padding: 2,
+    order: "YEAR_THEN_SEQ",
   },
   ATT_QUOTATION: {
     type: "ATT_QUOTATION",
     label: "ATT Quotation",
     prefix: "SPM/ATT/",
-    padding: 4,
+    padding: 2,
+    order: "YEAR_THEN_SEQ",
   },
   CONTRACT_RENEWAL: {
     type: "CONTRACT_RENEWAL",
     label: "Contract Renewal",
     prefix: "SPM/CR/",
-    padding: 4,
+    padding: 2,
+    order: "YEAR_THEN_SEQ",
   },
   ONE_TIME_JOB: {
     type: "ONE_TIME_JOB",
     label: "One Time Job",
     prefix: "Job No/",
-    padding: 4,
+    padding: 2,
+    order: "YEAR_THEN_SEQ",
   },
 });
 
@@ -60,16 +67,22 @@ export const DOCUMENT_CONFIG = Object.freeze({
  * Returns:
  *  {
  *    baseYear: 2026,
- *    financialYear: "2026-2027",
- *    rawInput: "2026" | "2026-2027"
+ *    financialYear: "2026-27",
+ *    financialYearFull: "2026-2027",
+ *    rawInput: "2026" | "2026-27"
  *  }
  */
 export const parseYearInput = (yearInput) => {
   if (!yearInput) {
     const current = new Date().getFullYear();
+    const currentMonth = new Date().getMonth();
+    const fyStart = currentMonth >= 3 ? current : current - 1;
+    const fyEnd = fyStart + 1;
+    const fyEndShort = String(fyEnd).slice(-2);
     return {
-      baseYear: current,
-      financialYear: `${current}-${current + 1}`,
+      baseYear: fyStart,
+      financialYear: `${fyStart}-${fyEndShort}`,
+      financialYearFull: `${fyStart}-${fyEnd}`,
       rawInput: String(current),
     };
   }
@@ -86,12 +99,14 @@ export const parseYearInput = (yearInput) => {
     }
     if (startYear < 2000 || startYear > 2099 || endYear !== startYear + 1) {
       throw new Error(
-        `Invalid financial year format: "${str}". Example: 2026-2027.`
+        `Invalid financial year format: "${str}". Example: 2026-27 or 2026-2027.`
       );
     }
+    const endShort = String(endYear).slice(-2);
     return {
       baseYear: startYear,
-      financialYear: `${startYear}-${endYear}`,
+      financialYear: `${startYear}-${endShort}`,
+      financialYearFull: `${startYear}-${endYear}`,
       rawInput: str,
     };
   }
@@ -99,21 +114,23 @@ export const parseYearInput = (yearInput) => {
   // Check 4-digit calendar year: 2026
   const num = Number(str);
   if (Number.isInteger(num) && num >= 2000 && num <= 2099 && str.length === 4) {
+    const nextYearShort = String(num + 1).slice(-2);
     return {
       baseYear: num,
-      financialYear: `${num}-${num + 1}`,
+      financialYear: `${num}-${nextYearShort}`,
+      financialYearFull: `${num}-${num + 1}`,
       rawInput: str,
     };
   }
 
   throw new Error(
-    `Invalid numbering year: "${yearInput}". Year must be a 4-digit year (e.g. 2026) or financial year (e.g. 2026-2027).`
+    `Invalid numbering year: "${yearInput}". Year must be a 4-digit year (e.g. 2026) or financial year (e.g. 2026-27).`
   );
 };
 
 /**
  * Returns the appropriate year string for a given document type.
- * Invoices strictly use the full financial year (e.g. 2026-2027),
+ * Invoices strictly use the Indian financial year formatted as YYYY-YY (e.g. 2026-27),
  * while quotations, renewals, and one time jobs use the calendar year (e.g. 2026).
  */
 export const getYearForDocType = (documentType, parsedYear) => {
@@ -136,20 +153,52 @@ export const validateYear = (year) => {
 };
 
 /**
- * Formats a sequence number with 4-digit zero-padding.
- * 1 -> 0001, 10 -> 0010, 100 -> 0100, 1000 -> 1000
+ * Formats a sequence number with a minimum of 2 digits.
+ * 1 -> 01, 9 -> 09, 10 -> 10, 99 -> 99, 100 -> 100, 101 -> 101.
+ * Never uses unnecessary padding such as 0001, 0002.
  */
-export const formatSequence = (seq, padding = 4) => {
-  return String(seq).padStart(padding, "0");
+export const formatSequence = (seq, padding = 2) => {
+  const num = Number(seq);
+  const minPad = Math.max(2, padding);
+  if (Number.isNaN(num)) return String(seq);
+  return String(num).padStart(minPad, "0");
 };
 
 /**
- * Formats the final document number string:
- * {PREFIX}{YEAR}/{DYNAMIC_NUMBER}
+ * Formats the final document number string.
+ *
+ * For Invoices (GST & Non-GST):
+ *  {PREFIX}/{DYNAMIC_NUMBER}/{FINANCIAL_YEAR}
+ *  e.g. SPMJ/01/2026-27, SPM/01/2026-27
+ *
+ * For Quotations, Renewals, One Time Jobs:
+ *  {PREFIX}{YEAR}/{DYNAMIC_NUMBER}
+ *  e.g. SPM/PC/2026/01, SPM/ATT/2026/01, SPM/CR/2026/01, Job No/2026/01
  */
-export const formatDocumentNumber = (prefix, year, seq, padding = 4) => {
-  const normalizedPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
-  return `${normalizedPrefix}${year}/${formatSequence(seq, padding)}`;
+export const formatDocumentNumber = (
+  prefixOrType,
+  year,
+  seq,
+  padding = 2,
+  order = null
+) => {
+  const formattedSeq = formatSequence(seq, padding);
+  const config = DOCUMENT_CONFIG[prefixOrType];
+  const prefix = config ? config.prefix : String(prefixOrType);
+  const resolvedOrder =
+    order ||
+    (config ? config.order : null) ||
+    (prefix.startsWith("SPMJ") || prefix === "SPM/" || prefix === "SPM"
+      ? "SEQ_THEN_YEAR"
+      : "YEAR_THEN_SEQ");
+
+  if (resolvedOrder === "SEQ_THEN_YEAR") {
+    const cleanPrefix = prefix.replace(/\/+$/, "");
+    return `${cleanPrefix}/${formattedSeq}/${year}`;
+  } else {
+    const normalizedPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
+    return `${normalizedPrefix}${year}/${formattedSeq}`;
+  }
 };
 
 /**
@@ -172,18 +221,20 @@ export const getConfiguredYear = async () => {
  * Atomically generates the next strictly sequential document number.
  * Uses MongoDB findOneAndUpdate with $inc and upsert for race-condition-free concurrency.
  *
- * @param {string} documentType - One of DOCUMENT_CONFIG keys
- * @param {object} options - Optional overrides: { year, session }
+ * @param {string} documentType - One of DOCUMENT_CONFIG keys or "INVOICE"
+ * @param {object} options - Optional overrides: { invoiceType, isNonGst, year, session }
  * @returns {Promise<{ documentNumber: string, documentType: string, year: string|number, seq: number }>}
  */
 export const generateDocumentNumber = async (documentType, options = {}) => {
   let targetDocType = documentType;
   if (documentType === "INVOICE") {
-    const isNonGst = options.invoiceType === "NON_GST" || options.isNonGst === true;
+    const isNonGst =
+      options.invoiceType === "NON_GST" || options.isNonGst === true;
     targetDocType = isNonGst ? "NON_GST_INVOICE" : "GST_INVOICE";
   }
 
-  const config = DOCUMENT_CONFIG[targetDocType] || DOCUMENT_CONFIG[documentType];
+  const config =
+    DOCUMENT_CONFIG[targetDocType] || DOCUMENT_CONFIG[documentType];
   if (!config) {
     throw new Error(
       `Unknown document type "${documentType}". Must be one of: ${Object.keys(
@@ -199,7 +250,7 @@ export const generateDocumentNumber = async (documentType, options = {}) => {
 
   const updateQuery = { $inc: { seq: 1 } };
   const findOptions = {
-    returnDocument: 'after',
+    returnDocument: "after",
     upsert: true,
     setDefaultsOnInsert: true,
   };
@@ -213,10 +264,13 @@ export const generateDocumentNumber = async (documentType, options = {}) => {
     findOptions
   );
 
-  const prefix = config.prefix;
   const padding = config.padding || 2;
-
-  const documentNumber = formatDocumentNumber(prefix, docYear, counter.seq, padding);
+  const documentNumber = formatDocumentNumber(
+    targetDocType,
+    docYear,
+    counter.seq,
+    padding
+  );
 
   return {
     documentNumber,
@@ -236,7 +290,12 @@ export const generateDocumentNumber = async (documentType, options = {}) => {
  * @param {number} [sampleSeq=1]
  * @param {object} [options={}]
  */
-export const getDocumentNumberPreview = (documentType, year, sampleSeq = 1, options = {}) => {
+export const getDocumentNumberPreview = (
+  documentType,
+  year,
+  sampleSeq = 1,
+  options = {}
+) => {
   if (typeof year === "object" && year !== null) {
     options = year;
     year = undefined;
@@ -248,32 +307,37 @@ export const getDocumentNumberPreview = (documentType, year, sampleSeq = 1, opti
 
   let targetDocType = documentType;
   if (documentType === "INVOICE") {
-    const isNonGst = options.invoiceType === "NON_GST" || options.isNonGst === true;
+    const isNonGst =
+      options.invoiceType === "NON_GST" || options.isNonGst === true;
     targetDocType = isNonGst ? "NON_GST_INVOICE" : "GST_INVOICE";
   }
 
-  const config = DOCUMENT_CONFIG[targetDocType] || DOCUMENT_CONFIG[documentType];
+  const config =
+    DOCUMENT_CONFIG[targetDocType] || DOCUMENT_CONFIG[documentType];
   if (!config) {
     throw new Error(`Unknown document type "${documentType}"`);
   }
   const parsed = parseYearInput(year || new Date().getFullYear());
   const docYear = getYearForDocType(targetDocType, parsed);
-
-  const prefix = config.prefix;
   const padding = config.padding || 2;
 
   return {
     documentType: targetDocType,
     label: config.label,
-    prefix,
-    previewNumber: formatDocumentNumber(prefix, docYear, sampleSeq, padding),
+    prefix: config.prefix,
+    previewNumber: formatDocumentNumber(
+      targetDocType,
+      docYear,
+      sampleSeq,
+      padding
+    ),
     year: docYear,
     baseYear: parsed.baseYear,
   };
 };
 
 /**
- * Generates non-mutating previews for all 5 document types.
+ * Generates non-mutating previews for all 6 document types.
  *
  * @param {string|number} [year]
  */
@@ -286,17 +350,31 @@ export const getAllDocumentPreviews = async (year) => {
   const parsed = parseYearInput(effectiveYear);
   const previews = {};
 
-  for (const [key, config] of Object.entries(DOCUMENT_CONFIG)) {
+  const previewKeys = [
+    "NON_GST_INVOICE",
+    "GST_INVOICE",
+    "PC_QUOTATION",
+    "ATT_QUOTATION",
+    "CONTRACT_RENEWAL",
+    "ONE_TIME_JOB",
+  ];
+
+  for (const key of previewKeys) {
+    const config = DOCUMENT_CONFIG[key];
     const docYear = getYearForDocType(key, parsed);
-    const padding = config.padding || 4;
+    const padding = config.padding || 2;
+    const sample = formatDocumentNumber(key, docYear, 1, padding);
     previews[key] = {
       type: key,
       label: config.label,
       prefix: config.prefix,
-      format: `${config.prefix}${docYear}/${"0".repeat(padding - 1)}1`,
-      sample: formatDocumentNumber(config.prefix, docYear, 1, padding),
+      format: sample,
+      sample,
     };
   }
+
+  // Backwards compatibility alias for INVOICE -> NON_GST_INVOICE
+  previews.INVOICE = previews.NON_GST_INVOICE;
 
   return {
     year: parsed.rawInput,
@@ -309,6 +387,7 @@ export const getAllDocumentPreviews = async (year) => {
 /**
  * Parses existing document numbers to initialize the DocumentSequence collection.
  * Idempotent: Never lowers an existing sequence counter.
+ * Handles both 2-digit (01) and legacy 4-digit (0001) formatting.
  */
 export const syncExistingDocumentSequences = async (models = {}) => {
   const { Invoice, Quotation, Renewal, Service } = models;
@@ -327,97 +406,211 @@ export const syncExistingDocumentSequences = async (models = {}) => {
     }
   };
 
-  // 1. Invoices
+  // 1. Invoices (Separate counters for NON_GST_INVOICE and GST_INVOICE)
   if (Invoice) {
     const invoices = await Invoice.find().select("invoiceNumber invoiceType");
     for (const inv of invoices) {
       if (!inv.invoiceNumber) continue;
-      // Match Non-GST SPMJ: SPMJ/YYYY-YYYY/NN
-      const mNonGst = inv.invoiceNumber.match(/^SPMJ\/(\d{4})[-/](?:\d{2,4})[-\/](\d+)/i);
-      if (mNonGst) {
-        await ensureMaxSeq("NON_GST_INVOICE", Number(mNonGst[1]), Number(mNonGst[2]));
-        continue;
+      const numStr = String(inv.invoiceNumber).trim();
+      const isNonGst =
+        inv.invoiceType === "NON_GST" ||
+        numStr.toUpperCase().startsWith("SPMJ");
+      const targetDocType = isNonGst ? "NON_GST_INVOICE" : "GST_INVOICE";
+
+      // 1.1 Slash-separated parts (SPMJ/01/2026-27, SPMJ/2026-2027/0025, SPMJ/INV/2026-27/01)
+      if (numStr.includes("/")) {
+        const parts = numStr.split("/").map((p) => p.trim()).filter(Boolean);
+        let tokens = parts;
+        if (/^(SPMJ|SPM)$/i.test(tokens[0])) {
+          tokens = tokens.slice(1);
+        }
+        if (/^INV$/i.test(tokens[0])) {
+          tokens = tokens.slice(1);
+        }
+        if (tokens.length >= 2) {
+          const t0 = tokens[0];
+          const t1 = tokens[1];
+          const fy0 = t0.match(/^(\d{4})(?:[-/]\d{2,4})?$/);
+          const fy1 = t1.match(/^(\d{4})(?:[-/]\d{2,4})?$/);
+
+          // If t0 is sequence and t1 is year/financial year (e.g. 01/2026-27)
+          if (fy1 && /^\d+$/.test(t0)) {
+            await ensureMaxSeq(targetDocType, Number(fy1[1]), Number(t0));
+            continue;
+          }
+          // If t0 is year/financial year and t1 is sequence (e.g. 2026-2027/0025 or 2026/01)
+          if (fy0 && /^\d+$/.test(t1)) {
+            await ensureMaxSeq(targetDocType, Number(fy0[1]), Number(t1));
+            continue;
+          }
+        }
       }
-      // Match GST SPM: SPM/YYYY-YYYY/NN (strictly 2-part sequence, not SPM/INV/...)
-      const mGst = inv.invoiceNumber.match(/^SPM\/(\d{4})[-/](?:\d{2,4})[-\/](\d+)$/i);
-      if (mGst) {
-        await ensureMaxSeq("GST_INVOICE", Number(mGst[1]), Number(mGst[2]));
+
+      // 1.2 Dash-separated format (e.g. SPM-2026-0001, INV-2026-01)
+      const mDashYear = numStr.match(/(?:SPMJ-|SPM-|INV-)?(\d{4})[-/](\d+)/i);
+      if (mDashYear) {
+        await ensureMaxSeq(
+          targetDocType,
+          Number(mDashYear[1]),
+          Number(mDashYear[2])
+        );
         continue;
       }
 
-      // Legacy fallback for previous numbering sequence
-      const m0 = inv.invoiceNumber.match(/(?:SPMJ|SPM)\/(?:INV\/)?(\d{4})[-/](?:\d{2,4})[-\/](\d+)/i);
-      if (m0) {
-        await ensureMaxSeq("INVOICE", Number(m0[1]), Number(m0[2]));
-      } else {
-        const m1 = inv.invoiceNumber.match(/(?:(?:SPMJ|SPM)\/(?:INV\/)?|SPM-|INV-)(\d{4})[-\/](\d+)/i);
-        if (m1) {
-          await ensureMaxSeq("INVOICE", Number(m1[1]), Number(m1[2]));
-        } else {
-          const m2 = inv.invoiceNumber.match(/INV-(\d+)/i);
-          if (m2) {
-            await ensureMaxSeq("INVOICE", new Date().getFullYear(), Number(m2[1]));
-          }
-        }
+      // 1.3 Simple sequence (e.g. INV-0001)
+      const mDashSimple = numStr.match(/INV-(\d+)/i);
+      if (mDashSimple) {
+        await ensureMaxSeq(
+          targetDocType,
+          new Date().getFullYear(),
+          Number(mDashSimple[1])
+        );
+        continue;
       }
     }
   }
 
-  // 2. Quotations
+  // 2. Quotations (Separate counters for PC_QUOTATION and ATT_QUOTATION)
   if (Quotation) {
-    const quotations = await Quotation.find().select("quotationNumber quotationType");
+    const quotations = await Quotation.find().select(
+      "quotationNumber quotationType"
+    );
     for (const q of quotations) {
       if (!q.quotationNumber) continue;
+      const qNumStr = String(q.quotationNumber).trim();
       const isAtt =
-        q.quotationType === "ATT" ||
-        q.quotationNumber.toUpperCase().includes("ATT");
+        q.quotationType === "ATT" || qNumStr.toUpperCase().includes("ATT");
       const docType = isAtt ? "ATT_QUOTATION" : "PC_QUOTATION";
 
-      // Match SPM/PC/YYYY/NNNN, SPM/ATT/YYYY/NNNN, SPM/QT/PC/YYYY/NNNN, SPM/PC/NNN/YYYY, etc.
-      const m1 = q.quotationNumber.match(/(?:SPM\/(?:QT\/)?(?:PC|ATT)\/|SPM-)(\d{4})[-\/](\d+)/i);
-      if (m1) {
-        await ensureMaxSeq(docType, Number(m1[1]), Number(m1[2]));
-      } else {
-        const m2 = q.quotationNumber.match(/SPM\/(?:PC|ATT)\/(\d+)\/(\d{4})/i);
-        if (m2) {
-          await ensureMaxSeq(docType, Number(m2[2]), Number(m2[1]));
-        } else {
-          const m3 = q.quotationNumber.match(/QTN-(\d+)/i);
-          if (m3) {
-            await ensureMaxSeq(docType, new Date().getFullYear(), Number(m3[1]));
+      if (qNumStr.includes("/")) {
+        const parts = qNumStr.split("/").map((p) => p.trim()).filter(Boolean);
+        const tokens = parts.filter(
+          (p) => !/^(SPM|QT|PC|ATT)$/i.test(p)
+        );
+        if (tokens.length >= 2) {
+          const t0 = tokens[0];
+          const t1 = tokens[1];
+          if (/^\d{4}$/.test(t0) && /^\d+$/.test(t1)) {
+            await ensureMaxSeq(docType, Number(t0), Number(t1));
+            continue;
+          }
+          if (/^\d+$/.test(t0) && /^\d{4}$/.test(t1)) {
+            await ensureMaxSeq(docType, Number(t1), Number(t0));
+            continue;
           }
         }
+      }
+
+      const m1 = qNumStr.match(
+        /(?:SPM\/(?:QT\/)?(?:PC|ATT)\/|SPM-)(\d{4})[-\/](\d+)/i
+      );
+      if (m1) {
+        await ensureMaxSeq(docType, Number(m1[1]), Number(m1[2]));
+        continue;
+      }
+      const m3 = qNumStr.match(/QTN-(\d+)/i);
+      if (m3) {
+        await ensureMaxSeq(docType, new Date().getFullYear(), Number(m3[1]));
+        continue;
       }
     }
   }
 
-  // 3. Renewals
+  // 3. Renewals (CONTRACT_RENEWAL)
   if (Renewal) {
     const renewals = await Renewal.find().select("renewalNumber");
     for (const r of renewals) {
       if (!r.renewalNumber) continue;
-      // Match SPM/CR/YYYY/NNNN, CR-YYYY-NNNN, REN-YYYY-NNNN, REN-NNNN
-      const m1 = r.renewalNumber.match(/(?:SPM\/CR\/|CR-|REN-)(\d{4})[-\/](\d+)/i);
-      if (m1) {
-        await ensureMaxSeq("CONTRACT_RENEWAL", Number(m1[1]), Number(m1[2]));
-      } else {
-        const m2 = r.renewalNumber.match(/REN-(\d+)/i);
-        if (m2) {
-          await ensureMaxSeq("CONTRACT_RENEWAL", new Date().getFullYear(), Number(m2[1]));
+      const rNumStr = String(r.renewalNumber).trim();
+      const docType = "CONTRACT_RENEWAL";
+
+      if (rNumStr.includes("/")) {
+        const parts = rNumStr.split("/").map((p) => p.trim()).filter(Boolean);
+        const tokens = parts.filter((p) => !/^(SPM|CR|REN)$/i.test(p));
+        if (tokens.length >= 2) {
+          const t0 = tokens[0];
+          const t1 = tokens[1];
+          if (/^\d{4}$/.test(t0) && /^\d+$/.test(t1)) {
+            await ensureMaxSeq(docType, Number(t0), Number(t1));
+            continue;
+          }
+          if (/^\d+$/.test(t0) && /^\d{4}$/.test(t1)) {
+            await ensureMaxSeq(docType, Number(t1), Number(t0));
+            continue;
+          }
         }
+      }
+
+      const m1 = rNumStr.match(/(?:SPM\/CR\/|CR-|REN-)(\d{4})[-\/](\d+)/i);
+      if (m1) {
+        await ensureMaxSeq(docType, Number(m1[1]), Number(m1[2]));
+        continue;
+      }
+      const m3 = rNumStr.match(/REN-(\d+)/i);
+      if (m3) {
+        await ensureMaxSeq(
+          docType,
+          new Date().getFullYear(),
+          Number(m3[1])
+        );
+        continue;
       }
     }
   }
 
-  // 4. One Time Jobs
+  // 4. One Time Jobs (ONE_TIME_JOB)
   if (Service) {
-    const jobs = await Service.find({ jobNo: { $exists: true, $ne: "" } }).select("jobNo");
+    const jobs = await Service.find({
+      $or: [
+        { jobNo: { $exists: true, $ne: "" } },
+        { documentNumber: { $exists: true, $ne: "" } },
+      ],
+    }).select("jobNo documentNumber frequency");
     for (const j of jobs) {
-      if (!j.jobNo) continue;
-      // Match Job No/YYYY/NNNN, Job No./YYYY/NNNN, SPM/OTJ/YYYY/NNNN
-      const m1 = j.jobNo.match(/(?:(?:Job\s*No[\.\/]*|SPM\/OTJ\/))(\d{4})[\/](\d+)/i);
+      if (j.frequency && String(j.frequency).toLowerCase() !== "one-time") {
+        continue;
+      }
+      const jNumStr = String(j.jobNo || j.documentNumber || "").trim();
+      if (!jNumStr) continue;
+
+      if (/^[A-Za-z]\/\d+$/.test(jNumStr)) {
+        continue;
+      }
+
+      const docType = "ONE_TIME_JOB";
+
+      if (jNumStr.includes("/")) {
+        const parts = jNumStr.split("/").map((p) => p.trim()).filter(Boolean);
+        const tokens = parts.filter(
+          (p) => !/^(SPM|OTJ|Job\s*No[\.]*)$/i.test(p)
+        );
+        if (tokens.length >= 2) {
+          const t0 = tokens[0];
+          const t1 = tokens[1];
+          if (/^\d{4}$/.test(t0) && /^\d+$/.test(t1)) {
+            await ensureMaxSeq(docType, Number(t0), Number(t1));
+            continue;
+          }
+          if (/^\d+$/.test(t0) && /^\d{4}$/.test(t1)) {
+            await ensureMaxSeq(docType, Number(t1), Number(t0));
+            continue;
+          }
+        }
+      }
+
+      const m1 = jNumStr.match(
+        /(?:(?:Job\s*No[\.\/:\s\-]*|SPM\/OTJ\/))(\d{4})[\/\-](\d+)/i
+      );
       if (m1) {
-        await ensureMaxSeq("ONE_TIME_JOB", Number(m1[1]), Number(m1[2]));
+        await ensureMaxSeq(docType, Number(m1[1]), Number(m1[2]));
+        continue;
+      }
+      const m2 = jNumStr.match(
+        /(?:(?:Job\s*No[\.\/:\s\-]*|SPM\/OTJ\/))(\d+)[\/\-](\d{4})/i
+      );
+      if (m2) {
+        await ensureMaxSeq(docType, Number(m2[2]), Number(m2[1]));
+        continue;
       }
     }
   }

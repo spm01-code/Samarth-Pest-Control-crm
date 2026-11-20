@@ -28,6 +28,7 @@ import {
 } from "../utils/serviceDateCalculator";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
+import usePermission from "../hooks/usePermission";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
@@ -48,6 +49,7 @@ function CustomerProfile() {
 
   const token = useSelector((state) => state.auth.token);
   const { selectedCustomer, loading } = useSelector((state) => state.customer);
+  const { isAdmin, canEdit, canDelete } = usePermission();
   const servicesState = useSelector((state) => state.services);
   const invoiceState = useSelector((state) => state.invoice);
   const quotationState = useSelector((state) => state.quotation);
@@ -64,10 +66,12 @@ function CustomerProfile() {
     dispatch(fetchCustomerById(id));
     dispatch(fetchServices());
     dispatch(fetchInvoices());
-    dispatch(fetchEmployees());
+    if (isAdmin) {
+      dispatch(fetchEmployees());
+    }
     dispatch(fetchCustomerQuotations(id));
     dispatch(fetchRenewals());
-  }, [dispatch, id]);
+  }, [dispatch, id, isAdmin]);
 
   const openTab = (tabName) => {
     setSearchParams({ tab: tabName });
@@ -221,32 +225,34 @@ function CustomerProfile() {
             </div>
           </div>
 
-          <div className="flex gap-3 items-center">
-            {!selectedCustomer.isArchived ? (
-              <>
-                <button
-                  onClick={() => setShowEditModal(true)}
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 cursor-pointer"
-                >
-                  Edit
-                </button>
+          {isAdmin && (
+            <div className="flex gap-3 items-center">
+              {!selectedCustomer.isArchived ? (
+                <>
+                  <button
+                    onClick={() => setShowEditModal(true)}
+                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 cursor-pointer"
+                  >
+                    Edit
+                  </button>
 
+                  <button
+                    onClick={handleDelete}
+                    className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 cursor-pointer"
+                  >
+                    Archive Customer
+                  </button>
+                </>
+              ) : (
                 <button
-                  onClick={handleDelete}
-                  className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 cursor-pointer"
+                  onClick={handleRestore}
+                  className="bg-emerald-600 text-white px-6 py-2.5 rounded-lg hover:bg-emerald-700 font-bold shadow-md cursor-pointer flex items-center gap-2"
                 >
-                  Archive Customer
+                  Restore Customer
                 </button>
-              </>
-            ) : (
-              <button
-                onClick={handleRestore}
-                className="bg-emerald-600 text-white px-6 py-2.5 rounded-lg hover:bg-emerald-700 font-bold shadow-md cursor-pointer flex items-center gap-2"
-              >
-                Restore Customer
-              </button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {selectedCustomer.isArchived && (

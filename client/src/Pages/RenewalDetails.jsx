@@ -9,11 +9,13 @@ import CreateRenewalModal from "../Components/CreateRenewalModal";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
+import usePermission from "../hooks/usePermission";
 
 function RenewalDetails() {
   const { id } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { isAdmin } = usePermission();
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [showPreview, setShowPreview] = useState(false);
@@ -241,13 +243,15 @@ function RenewalDetails() {
         >
           Preview PDF
         </button>
-        <button
-          type="button"
-          onClick={() => setShowEditModal(true)}
-          className="rounded-xl bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700"
-        >
-          Edit Renewal
-        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowEditModal(true)}
+            className="rounded-xl bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700"
+          >
+            Edit Renewal
+          </button>
+        )}
         {customer._id && (
           <button
             type="button"
@@ -257,14 +261,16 @@ function RenewalDetails() {
             View Customer
           </button>
         )}
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={deleting}
-          className="rounded-xl bg-red-600 px-6 py-3 font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {deleting ? "Deleting..." : "Delete Renewal"}
-        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="rounded-xl bg-red-600 px-6 py-3 font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deleting ? "Deleting..." : "Delete Renewal"}
+          </button>
+        )}
       </div>
 
       <DocumentPreviewModal

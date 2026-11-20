@@ -7,26 +7,7 @@ import {
   updateCustomer,
   deleteCustomer,
 } from "../API/customerAPI";
-import { refreshSession } from "./authSlice";
-
-const isExpiredTokenError = (error) =>
-  error.message === "Invalid or expired token";
-
-const withFreshToken = async (thunkAPI, request) => {
-  try {
-    return await request(thunkAPI.getState().auth.token);
-  } catch (error) {
-    if (!isExpiredTokenError(error)) {
-      throw error;
-    }
-
-    const refreshedSession = await thunkAPI
-      .dispatch(refreshSession())
-      .unwrap();
-
-    return await request(refreshedSession.accessToken);
-  }
-};
+import withFreshToken from "../utils/withFreshToken";
 
 // GET CUSTOMER BY ID
 export const fetchCustomerById = createAsyncThunk(

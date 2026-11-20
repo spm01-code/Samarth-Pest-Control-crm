@@ -207,14 +207,8 @@ export const createService = async (req, res) => {
       delete payload.employee;
     }
 
-    // Auto-allocate atomic ONE_TIME_JOB number for One Time Job records
+    // One Time Job preparation
     if (isOneTime) {
-      const { documentNumber: jobNo } = await generateDocumentNumber(
-        "ONE_TIME_JOB"
-      );
-      payload.documentNumber = jobNo;
-      payload.jobNo = jobNo;
-
       // Requirement 2: Remove Description, Remark and Payment Details from One Time Job creation
       delete payload.desc;
       delete payload.remark;
@@ -317,8 +311,33 @@ export const createService = async (req, res) => {
       payload.upcomingServiceDates = upcomingServiceDates;
     }
 
-    const newService = new Service(payload);
-    await newService.save();
+    const maxRetries = isOneTime ? 3 : 1;
+    let newService;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (isOneTime) {
+        const { documentNumber: jobNo } = await generateDocumentNumber(
+          "ONE_TIME_JOB"
+        );
+        payload.documentNumber = jobNo;
+        payload.jobNo = jobNo;
+        if (payload.customerSnapshot) {
+          payload.customerSnapshot.jobNo = jobNo;
+        }
+      }
+
+      try {
+        newService = new Service(payload);
+        await newService.save();
+        break;
+      } catch (err) {
+        if (isOneTime && err.code === 11000 && attempt < maxRetries) {
+          console.warn(`Duplicate jobNo ${payload.jobNo} encountered, retrying (${attempt}/${maxRetries})...`);
+          continue;
+        }
+        throw err;
+      }
+    }
 
     await newService.populate([
       { path: "customer", select: "fullName phone" },

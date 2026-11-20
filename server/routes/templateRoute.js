@@ -1,29 +1,26 @@
 import express from "express";
-
 import authMiddleware from "../middleware/authMiddleware.js";
 import templateUpload from "../middleware/templateUpload.js";
-
+import { requireAdmin } from "../middleware/rbacMiddleware.js";
 import {
   uploadTemplate,
   getActiveTemplate,
-  getTemplates, 
+  getTemplates,
   deleteTemplate,
-  activateTemplate
+  activateTemplate,
 } from "../controller/templateController.js";
 
 const router = express.Router();
 
 router.use(authMiddleware);
 
-router.post("/upload", templateUpload.single("template"), uploadTemplate);
-
+// Permitted for Employee and Admin
 router.get("/", getTemplates);
-
 router.get("/active/:documentType", getActiveTemplate);
 
-router.put("/:id/activate", activateTemplate);
-
-router.delete("/:id", deleteTemplate);
+// Admin Only
+router.post("/upload", requireAdmin, templateUpload.single("template"), uploadTemplate);
+router.put("/:id/activate", requireAdmin, activateTemplate);
+router.delete("/:id", requireAdmin, deleteTemplate);
 
 export default router;
-

@@ -162,42 +162,55 @@ export const createRenewal = async (req, res) => {
     const subtotal = services.reduce((sum, service) => sum + Number(service.amount || 0), 0);
     const totalAmount = subtotal;
 
-    const { documentNumber: renewalNumber } = await generateDocumentNumber(
-      "CONTRACT_RENEWAL"
-    );
+    let renewalDoc;
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const { documentNumber: renewalNumber } = await generateDocumentNumber(
+        "CONTRACT_RENEWAL"
+      );
 
-    const renewalDateVal = renewalDate || new Date();
-    const { contractStartDate, contractEndDate, contractPeriod: defaultContractPeriod } = getContractPeriodDates(renewalDateVal);
+      const renewalDateVal = renewalDate || new Date();
+      const { contractStartDate, contractEndDate, contractPeriod: defaultContractPeriod } = getContractPeriodDates(renewalDateVal);
 
-    const renewalDoc = await Renewal.create({
-      renewalNumber,
-      renewalDate: renewalDateVal,
-      customer: customer._id,
-      customerSnapshot: {
-        jobNo: customer.jobNo || customer.archivedJobNo || "",
-        fullName: customer.fullName || "",
-        companyName: customer.companyName || "",
-        address: customer.address || "",
-        phone: customer.phone || "",
-        email: customer.email || "",
-        gstNumber: customer.gstNumber || "",
-        contactPerson: customer.contactPerson || "",
-        snapshotTakenAt: new Date(),
-      },
-      services,
-      contractStartDate,
-      contractEndDate,
-      contractPeriod: customContractPeriod || defaultContractPeriod,
-      subtotal,
-      totalTax: 0,
-      totalAmount,
-      amountInWords: customAmountInWords
-        ? customAmountInWords.trim()
-        : (numberToWords(totalAmount) ? `RUPEES ${numberToWords(totalAmount).toUpperCase()} ONLY` : ""),
-      paymentTerm: paymentTerm || "Quarterly.",
-      notes,
-      status: status || "Draft",
-    });
+      try {
+        renewalDoc = await Renewal.create({
+          renewalNumber,
+          renewalDate: renewalDateVal,
+          customer: customer._id,
+          customerSnapshot: {
+            jobNo: customer.jobNo || customer.archivedJobNo || "",
+            fullName: customer.fullName || "",
+            companyName: customer.companyName || "",
+            address: customer.address || "",
+            phone: customer.phone || "",
+            email: customer.email || "",
+            gstNumber: customer.gstNumber || "",
+            contactPerson: customer.contactPerson || "",
+            snapshotTakenAt: new Date(),
+          },
+          services,
+          contractStartDate,
+          contractEndDate,
+          contractPeriod: customContractPeriod || defaultContractPeriod,
+          subtotal,
+          totalTax: 0,
+          totalAmount,
+          amountInWords: customAmountInWords
+            ? customAmountInWords.trim()
+            : (numberToWords(totalAmount) ? `RUPEES ${numberToWords(totalAmount).toUpperCase()} ONLY` : ""),
+          paymentTerm: paymentTerm || "Quarterly.",
+          notes,
+          status: status || "Draft",
+        });
+        break;
+      } catch (err) {
+        if (err.code === 11000 && attempt < maxRetries) {
+          console.warn(`Duplicate renewalNumber ${renewalNumber} encountered, retrying (${attempt}/${maxRetries})...`);
+          continue;
+        }
+        throw err;
+      }
+    }
 
     const renewal = await populateRenewal(Renewal.findById(renewalDoc._id));
 

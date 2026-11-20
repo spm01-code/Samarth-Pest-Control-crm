@@ -14,6 +14,13 @@ import { useScrollLock } from "../hooks/useScrollLock";
 
 const today = () => new Date().toLocaleDateString("en-CA");
 
+export const DEFAULT_ATT_SUBJECT =
+  "Quotation for Anti-termite treatment with 10 Years Warranty for Proposed Construction";
+export const DEFAULT_ATT_SPECIFICATION =
+  "Providing Material and Labour For injecting Chemical Emulsion For Pre-Constructional Anti Termite Treatment. As Per 6313 (Part II) 2013";
+export const DEFAULT_ATT_EQUIPMENT =
+  "Sprayers & Sprinklers Will Be Used To Ensure Proper Penetration Of Chemicals Into the Earth.";
+
 const emptyService = () => ({
   serviceName: "",
   frequency: "",
@@ -119,19 +126,13 @@ const getInitialFormData = (
       status: initialQuotation.status || "Draft",
       subject:
         initialQuotation.subject ||
-        (isAtt
-          ? "Quotation for Anti-termite treatment with 10 Years Warranty for Proposed Construction"
-          : ""),
+        (isAtt ? DEFAULT_ATT_SUBJECT : ""),
       specification:
         initialQuotation.specification ||
-        (isAtt
-          ? "Specification: The work shall be carried out in accordance with IS 6313 (Part II)"
-          : ""),
+        (isAtt ? DEFAULT_ATT_SPECIFICATION : ""),
       equipment:
         initialQuotation.equipment ||
-        (isAtt
-          ? "All the equipment, spray pumps, etc., are in working condition and ready for the execution of the work."
-          : ""),
+        (isAtt ? DEFAULT_ATT_EQUIPMENT : ""),
       treatments:
         Array.isArray(initialQuotation.treatments) &&
         initialQuotation.treatments.length > 0
@@ -171,15 +172,9 @@ const getInitialFormData = (
     billingTerm: "Monthly",
     notes: "",
     status: "Draft",
-    subject: isAtt
-      ? "Quotation for Anti-termite treatment with 10 Years Warranty for Proposed Construction"
-      : "",
-    specification: isAtt
-      ? "Specification: The work shall be carried out in accordance with IS 6313 (Part II)"
-      : "",
-    equipment: isAtt
-      ? "All the equipment, spray pumps, etc., are in working condition and ready for the execution of the work."
-      : "",
+    subject: isAtt ? DEFAULT_ATT_SUBJECT : "",
+    specification: isAtt ? DEFAULT_ATT_SPECIFICATION : "",
+    equipment: isAtt ? DEFAULT_ATT_EQUIPMENT : "",
     treatments: [emptyTreatment()],
   };
 };
@@ -277,14 +272,11 @@ function CreateQuotationModal({
                 ? "Within 10 Days From The Date Of Submission Of invoice"
                 : current.paymentTerm,
             subject:
-              current.subject ||
-              "Anti Termite Pre-construction Treatment at your site.",
+              current.subject || DEFAULT_ATT_SUBJECT,
             specification:
-              current.specification ||
-              "Providing Material and Labour For Injecting Chemical Emulsion For Pre-Constructional Anti Termite Treatment. As Per 6313 (Part II) 2013",
+              current.specification || DEFAULT_ATT_SPECIFICATION,
             equipment:
-              current.equipment ||
-              "Sprayers & Sprinklers Will Be Used To Ensure Proper Penetration Of Chemicals Into the Earth.",
+              current.equipment || DEFAULT_ATT_EQUIPMENT,
             treatments:
               current.treatments && current.treatments.length > 0
                 ? current.treatments

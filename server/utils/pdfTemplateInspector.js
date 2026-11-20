@@ -1574,8 +1574,8 @@ export function resolveContractRenewalPdfLayout(inspection) {
   for (const l of tcRawLines) {
     const txt = l.text.trim();
     if (!txt) continue;
-    if (/^[●•\-]/.test(txt) || tcBullets.length === 0) {
-      tcBullets.push(txt.replace(/^[●•\-]\s*/, "").trim());
+    if (/^[●•\-·]/.test(txt) || tcBullets.length === 0) {
+      tcBullets.push(txt.replace(/^[●•\-·]\s*/, "").trim());
     } else {
       tcBullets[tcBullets.length - 1] = `${tcBullets[tcBullets.length - 1]} ${txt}`;
     }
@@ -1592,8 +1592,8 @@ export function resolveContractRenewalPdfLayout(inspection) {
     headerBannerBottomY: headerBannerBottom,
     colors: {
       headerFillRgb: headerShade?.fillRgb || [0.675, 0.863, 0.0902],
-      rowFillRgb: rowShade?.fillRgb || [0.8, 0.8, 0.8],
-      totalFillRgb: totalShade?.fillRgb || [0.898, 0.898, 0.898],
+      rowFillRgb: [1, 1, 1],
+      totalFillRgb: [1, 1, 1],
     },
     fields: {
       dateX: dateLine?.x ?? 471.58,
@@ -1615,6 +1615,7 @@ export function resolveContractRenewalPdfLayout(inspection) {
     },
     tcBullets,
     stampImage,
+    hasContractee: !!contracteeLine,
   };
 }
 
@@ -1880,7 +1881,7 @@ export function resolveAttQuotationPdfLayout(inspection) {
   const toLine = findLine(lines, (l) => /^to\s*,?$/i.test(l.text.trim()));
   const custNameLine = findLine(lines, (l) => /\{customername\}/i.test(l.text));
   const custAddrLine = findLine(lines, (l) => /\{customeraddress\}/i.test(l.text));
-  const subjectLine = findLine(lines, (l) => /\bsubject\s*:/i.test(l.text));
+  const subjectLine = findLine(lines, (l) => /\bsubject\s*:/i.test(l.text) || /\{subject\}/i.test(l.text));
   const respectedLine = findLine(lines, (l) => /respected\s+sir/i.test(l.text));
   const stampImage = p0.images.find((im) => im.y1 < trBodyBottomY + 10) || null;
 

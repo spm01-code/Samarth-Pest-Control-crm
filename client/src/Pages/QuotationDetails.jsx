@@ -12,6 +12,7 @@ import DocumentPreviewModal from "../Components/DocumentPreviewModal";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateOnly as formatDate, formatTimestamp } from "../utils/dateUtils";
+import usePermission from "../hooks/usePermission";
 
 const statusStyles = {
   Draft: "bg-gray-100 text-gray-700",
@@ -40,6 +41,7 @@ function QuotationDetails() {
   const { id } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { isAdmin } = usePermission();
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [showPreview, setShowPreview] = useState(false);
@@ -491,13 +493,15 @@ function QuotationDetails() {
       )}
 
       <div className="flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={() => setShowEditModal(true)}
-          className="rounded-xl bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700"
-        >
-          Edit Quotation
-        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowEditModal(true)}
+            className="rounded-xl bg-blue-600 px-6 py-3 font-medium text-white hover:bg-blue-700"
+          >
+            Edit Quotation
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setShowPreview(true)}
@@ -516,14 +520,16 @@ function QuotationDetails() {
             Open Customer
           </button>
         )}
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={deleting}
-          className="rounded-xl bg-red-600 px-6 py-3 font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {deleting ? "Deleting..." : "Delete Quotation"}
-        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="rounded-xl bg-red-600 px-6 py-3 font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {deleting ? "Deleting..." : "Delete Quotation"}
+          </button>
+        )}
       </div>
 
       <DocumentPreviewModal

@@ -72,10 +72,42 @@ const adminSchema = new mongoose.Schema(
       type: String,
     },
 
+    refreshTokenHash: {
+      type: String,
+      default: null,
+    },
+
+    sessionExpiresAt: {
+      type: Date,
+      default: null,
+    },
+
+    tokenVersion: {
+      type: Number,
+      default: 0,
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+    },
+
+    lockoutUntil: {
+      type: Date,
+      default: null,
+    },
+
     role: {
       type: String,
-      enum: ["admin"],
-      default: "admin",
+      enum: ["admin", "employee"],
+      default: "employee",
+      lowercase: true,
+      trim: true,
     },
   },
   {
@@ -85,4 +117,5 @@ const adminSchema = new mongoose.Schema(
 
 const Admin = mongoose.model("Admin", adminSchema);
 
+export { Admin as User };
 export default Admin;

@@ -4,10 +4,13 @@ import { useSelector } from "react-redux";
 import { BASE_URL } from "./API/apiConfig";
 
 import DashboardLayout from "./Pages/DashboardLayout";
+import ProtectedRoute from "./Components/ProtectedRoute";
 
 import Login from "./Pages/Auth/Login";
 import Register from "./Pages/Auth/Register";
 import VerifyOtp from "./Pages/Auth/VerifyOtp";
+import AdminLogin from "./Pages/Auth/AdminLogin";
+import AdminRegister from "./Pages/Auth/AdminRegister";
 
 import Customers from "./Pages/Customers";
 import Employees from "./Pages/Employees";
@@ -83,57 +86,53 @@ function App() {
     <>
       <ToastContainer />
       <Routes>
-      {/* Auth Routes */}
+        {/* Normal Public Auth Routes */}
+        <Route path="/login" element={!token ? <Login /> : <Navigate to="/" />} />
+        <Route path="/register" element={!token ? <Register /> : <Navigate to="/" />} />
+        <Route path="/verify-otp" element={!token ? <VerifyOtp /> : <Navigate to="/" />} />
 
-      <Route path="/login" element={!token ? <Login /> : <Navigate to="/" />} />
+        {/* Secret Admin Authentication Routes */}
+        <Route
+          path="/secure-access/:secretPath/login"
+          element={!token ? <AdminLogin /> : <Navigate to="/" />}
+        />
+        <Route
+          path="/secure-access/:secretPath/register"
+          element={!token ? <AdminRegister /> : <Navigate to="/" />}
+        />
 
-      <Route
-        path="/register"
-        element={!token ? <Register /> : <Navigate to="/" />}
-      />
+        {/* Dashboard Layout: Protected by Token */}
+        <Route element={token ? <DashboardLayout /> : <Navigate to="/login" />}>
+          {/* General Routes (Allowed for both Admin and Employee) */}
+          <Route path="/" element={<Customers />} />
+          <Route path="/alerts" element={<Alerts />} />
+          <Route path="/services" element={<Services />} />
+          <Route path="/one-time-jobs" element={<Services isOneTimePage={true} />} />
+          <Route path="/quotation" element={<Quotations />} />
+          <Route path="/renewals" element={<Renewals />} />
+          <Route path="/invoices" element={<Invoices />} />
+          <Route path="/profile" element={<Profile />} />
 
-      <Route
-        path="/verify-otp"
-        element={!token ? <VerifyOtp /> : <Navigate to="/" />}
-      />
+          <Route path="/customers/:id" element={<CustomerProfile />} />
+          <Route path="/services/:id" element={<ServiceDetails />} />
+          <Route path="/invoices/:id" element={<InvoiceDetails />} />
+          <Route path="/quotations/:id" element={<QuotationDetails />} />
+          <Route path="/renewals/:id" element={<RenewalDetails />} />
 
-      {/* Dashboard Layout */}
+          {/* Admin-Only Routes: Strictly Protected */}
+          <Route element={<ProtectedRoute allowedRoles={["admin"]} redirectTo="/" />}>
+            <Route path="/employees" element={<Employees />} />
+            <Route path="/employees/:id" element={<EmployeeDetails />} />
+            <Route path="/attendance" element={<Attendance />} />
+            <Route path="/upload" element={<Upload />} />
+            <Route path="/job-numbers" element={<JobNumberManagement />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
+        </Route>
 
-      <Route element={token ? <DashboardLayout /> : <Navigate to="/login" />}>
-        <Route path="/" element={<Customers />} />
-
-        <Route path="/alerts" element={<Alerts />} />
-        
-        <Route path="/employees" element={<Employees />} />
-
-        <Route path="/attendance" element={<Attendance />} />
-
-        <Route path="/services" element={<Services />} />
-        <Route path="/one-time-jobs" element={<Services isOneTimePage={true} />} />
-        
-
-        <Route path="/quotation" element={<Quotations />} />
-        <Route path="/renewals" element={<Renewals />} />
-
-        <Route path="/invoices" element={<Invoices />} />
-
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/upload" element={<Upload />} />
-        <Route path="/job-numbers" element={<JobNumberManagement />} />
-        <Route path="/settings" element={<Settings />} />
-
-
-        <Route path="/customers/:id" element={<CustomerProfile />} />
-        <Route path="/services/:id" element={<ServiceDetails />} />
-        <Route path="/invoices/:id" element={<InvoiceDetails />} />
-        <Route path="/quotations/:id" element={<QuotationDetails />} />
-        <Route path="/renewals/:id" element={<RenewalDetails />} />
-        <Route path="/employees/:id" element={<EmployeeDetails />} />
-      </Route>
-
-      {/* 404 - Page Not Found for all unhandled routes */}
-      <Route path="*" element={<PageNotFound />} />
-    </Routes>
+        {/* 404 - Page Not Found for all unhandled routes */}
+        <Route path="*" element={<PageNotFound />} />
+      </Routes>
     </>
   );
 }

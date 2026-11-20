@@ -26,11 +26,6 @@ export const createQuotation = async (req, res) => {
     const documentType =
       quotationType === "ATT" ? "ATT_QUOTATION" : "PC_QUOTATION";
 
-    // Backend generates atomic sequential quotation number
-    const { documentNumber: quotationNumber } = await generateDocumentNumber(
-      documentType
-    );
-
     let totalAmount = req.body.totalAmount;
     if (
       (totalAmount === undefined || totalAmount === null || totalAmount === "") &&
@@ -102,13 +97,45 @@ export const createQuotation = async (req, res) => {
       };
     }
 
-    const quotation = await Quotation.create({
-      ...bodyCopy,
-      ...(totalAmount !== undefined && totalAmount !== null ? { totalAmount } : {}),
-      customerSnapshot,
-      quotationType,
-      quotationNumber,
-    });
+    if (quotationType === "ATT") {
+      if (bodyCopy.subject === undefined || bodyCopy.subject === null) {
+        bodyCopy.subject =
+          "Quotation for Anti-termite treatment with 10 Years Warranty for Proposed Construction";
+      }
+      if (bodyCopy.specification === undefined || bodyCopy.specification === null) {
+        bodyCopy.specification =
+          "Providing Material and Labour For injecting Chemical Emulsion For Pre-Constructional Anti Termite Treatment. As Per 6313 (Part II) 2013";
+      }
+      if (bodyCopy.equipment === undefined || bodyCopy.equipment === null) {
+        bodyCopy.equipment =
+          "Sprayers & Sprinklers Will Be Used To Ensure Proper Penetration Of Chemicals Into the Earth.";
+      }
+    }
+
+    let quotation;
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const { documentNumber: quotationNumber } = await generateDocumentNumber(
+        documentType
+      );
+
+      try {
+        quotation = await Quotation.create({
+          ...bodyCopy,
+          ...(totalAmount !== undefined && totalAmount !== null ? { totalAmount } : {}),
+          customerSnapshot,
+          quotationType,
+          quotationNumber,
+        });
+        break;
+      } catch (err) {
+        if (err.code === 11000 && attempt < maxRetries) {
+          console.warn(`Duplicate quotationNumber ${quotationNumber} encountered, retrying (${attempt}/${maxRetries})...`);
+          continue;
+        }
+        throw err;
+      }
+    }
 
     const populatedQuotation = await populateQuotation(
       Quotation.findById(quotation._id),

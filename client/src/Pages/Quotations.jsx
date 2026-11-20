@@ -10,10 +10,12 @@ import { getErrorMessage } from "../utils/errorHandler";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
+import usePermission from "../hooks/usePermission";
 
 function Quotations() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { isAdmin } = usePermission();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createType, setCreateType] = useState("PC");
@@ -291,14 +293,16 @@ function Quotations() {
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => handleDelete(quotation._id)}
-                  className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 cursor-pointer"
-                  title="Delete Quotation"
-                >
-                  <HiOutlineTrash className="size-3.5 shrink-0" />
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(quotation._id)}
+                    className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 transition hover:bg-red-100 hover:border-red-300 cursor-pointer"
+                    title="Delete Quotation"
+                  >
+                    <HiOutlineTrash className="size-3.5 shrink-0" />
+                  </button>
+                )}
               </div>
             </td>
           </tr>

@@ -2630,7 +2630,7 @@ export async function generateContractRenewalPdf(
   // ------------------------------------------------------------
   // 4. Measure Summary Bullets & Full T&C + Acceptance + Contractee Flow
   // ------------------------------------------------------------
-  const bulletX = 21.84;
+  const bulletX = colX[0];
   const bulletTextX = bulletX + 10;
   const bulletMaxX = colX[5] - 2;
   const cPeriod = sanitizePdfText(data.contractPeriod || "");
@@ -2662,8 +2662,8 @@ export async function generateContractRenewalPdf(
   );
   const bulletsTotalH = (cPeriodM.height + 2) + 10.5 + 10.5 + (payTermM.height + 4);
 
-  const tcBulletX = 14.64;
-  const tcTextX = 25;
+  const tcBulletX = colX[0];
+  const tcTextX = tcBulletX + 10;
   const tcMaxX = colX[5] - 4;
   const tcList = layout.tcBullets.length > 0 ? layout.tcBullets : [
     "GST, is applicable as per the prevailing rate while invoicing and any changes in tax structure as bought in by the Government of India shall be binding on either parties.",
@@ -2808,8 +2808,34 @@ export async function generateContractRenewalPdf(
       font: fontBold,
       color: black,
     });
-    fy -= 32;
-    drawContracteeLine(targetPage, Math.max(24, fy));
+    if (layout.hasContractee) {
+      fy -= 32;
+      drawContracteeLine(targetPage, Math.max(24, fy));
+    } else {
+      fy -= 26;
+      targetPage.drawText("(CONTRACTEE SIGNATURE) --", {
+        x: colX[0],
+        y: fy,
+        size: 8.5,
+        font: fontRegular,
+        color: black,
+      });
+      fy -= 18;
+      targetPage.drawText("(CONTRACTEE NAME) --", {
+        x: colX[0],
+        y: fy,
+        size: 8.5,
+        font: fontRegular,
+        color: black,
+      });
+      targetPage.drawText("(CONTRACTEE MOB. NO) --", {
+        x: 375,
+        y: fy,
+        size: 8.5,
+        font: fontRegular,
+        color: black,
+      });
+    }
   };
 
   // ------------------------------------------------------------
@@ -2836,15 +2862,17 @@ export async function generateContractRenewalPdf(
     drawHBorder(page1, colX[0], colX[5], tbl.headerBottomY, borderW, black);
     drawSummaryBullets(page1, effTotalBottomY - 11);
 
-    // Replace only Contractee Name & Mobile cleanly
-    page1.drawRectangle({
-      x: 35,
-      y: layout.fields.contracteeY - 10,
-      width: layout.pageWidth - 55,
-      height: 24,
-      color: white,
-    });
-    drawContracteeLine(page1, layout.fields.contracteeY);
+    // Replace only Contractee Name & Mobile cleanly if present in template
+    if (layout.hasContractee) {
+      page1.drawRectangle({
+        x: 35,
+        y: layout.fields.contracteeY - 10,
+        width: layout.pageWidth - 55,
+        height: 24,
+        color: white,
+      });
+      drawContracteeLine(page1, layout.fields.contracteeY);
+    }
     return pdfDoc;
   }
 
@@ -3869,7 +3897,9 @@ export async function generateAttQuotationPdf(
       : nameBottomY;
 
   const subjectVal = sanitizePdfText(
-    data.subject || "Anti Termite Pre-construction Treatment at your site."
+    data.subject ||
+      data.Subject ||
+      "Quotation for Anti-termite treatment with 10 Years Warranty for Proposed Construction"
   );
   const subjectX = layout.meta.subjectX;
   const subjectMaxX = scopeRightX - 2;
@@ -3909,7 +3939,8 @@ export async function generateAttQuotationPdf(
       labelLines: ["Specification"],
       value: sanitizePdfText(
         data.specification ||
-          "Providing Material and Labour For Injecting Chemical Emulsion For Pre-Constructional Anti Termite Treatment."
+          data.Specification ||
+          "Providing Material and Labour For injecting Chemical Emulsion For Pre-Constructional Anti Termite Treatment. As Per 6313 (Part II) 2013"
       ),
       valFont: fontRegular,
       fontSize: 10,

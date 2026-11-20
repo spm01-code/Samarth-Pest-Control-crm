@@ -11,11 +11,13 @@ import { FaArrowLeft } from "react-icons/fa";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateOnly as formatDate, formatTimestamp } from "../utils/dateUtils";
+import usePermission from "../hooks/usePermission";
 
 function InvoiceDetails() {
   const { id } = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { isAdmin } = usePermission();
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -196,18 +198,22 @@ function InvoiceDetails() {
               Preview PDF
             </button>
 
-            <button
-              onClick={() => setShowEditModal(true)}
-              className="bg-blue-800 cursor-pointer text-white px-5 py-1 rounded-lg"
-            >
-              Edit
-            </button>
-            <button
-              onClick={handleDelete}
-              className="bg-red-700 cursor-pointer text-white px-5 py-1 rounded-lg"
-            >
-              Delete
-            </button>
+            {isAdmin && (
+              <>
+                <button
+                  onClick={() => setShowEditModal(true)}
+                  className="bg-blue-800 cursor-pointer text-white px-5 py-1 rounded-lg hover:bg-blue-900 transition"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="bg-red-700 cursor-pointer text-white px-5 py-1 rounded-lg hover:bg-red-800 transition"
+                >
+                  Delete
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

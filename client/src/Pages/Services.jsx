@@ -15,6 +15,7 @@ import {
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
+import usePermission from "../hooks/usePermission";
 
 function Services({ isOneTimePage = false }) {
   const dispatch = useDispatch();
@@ -36,11 +37,15 @@ function Services({ isOneTimePage = false }) {
     setFrequencyFilter(isOneTimeView ? "one-time" : "all");
   }, [isOneTimeView]);
 
+  const { isAdmin } = usePermission();
+
   useEffect(() => {
     dispatch(fetchServices());
     dispatch(fetchCustomers());
-    dispatch(fetchEmployees());
-  }, [dispatch]);
+    if (isAdmin) {
+      dispatch(fetchEmployees());
+    }
+  }, [dispatch, isAdmin]);
 
   const serviceList = Array.isArray(services) ? services : [];
 

@@ -45,40 +45,8 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
     if (isOpen) {
       dispatch(fetchCustomers());
       dispatch(fetchRenewals());
-
-      const loadPrefix = async () => {
-        try {
-          const data = await fetchCompanySettingsAPI(token);
-          if (data.success && data.settings) {
-            const prefix = data.settings.renewalPrefix || "REN-";
-            const count = renewals.length;
-            const year = new Date().getFullYear();
-            const countStr = String(count + 1).padStart(4, "0");
-            
-            let generatedNumber = prefix;
-            if (prefix.includes(String(year))) {
-              const separator = prefix.endsWith("-") ? "" : "-";
-              generatedNumber = `${prefix}${separator}${countStr}`;
-            } else {
-              const separator = prefix.endsWith("-") ? "" : "-";
-              generatedNumber = `${prefix}${separator}${year}-${countStr}`;
-            }
-
-            setForm((current) => ({
-              ...current,
-              renewalNumber: current.renewalNumber || generatedNumber,
-            }));
-          }
-        } catch (error) {
-          console.error("Failed to load prefix settings:", error);
-        }
-      };
-
-      if (token && !initialRenewal) {
-        loadPrefix();
-      }
     }
-  }, [dispatch, isOpen, token, renewals.length, initialRenewal]);
+  }, [dispatch, isOpen]);
 
   useEffect(() => {
     if (initialRenewal) {
@@ -252,12 +220,14 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
             <label className="font-medium">
               Renewal No
               <input
-                value={form.renewalNumber}
-                onChange={(e) =>
-                  setForm({ ...form, renewalNumber: e.target.value })
+                value={
+                  initialRenewal
+                    ? form.renewalNumber
+                    : "Auto-generated on creation (SPM/CR/...)"
                 }
-                className="mt-2 w-full rounded-lg border p-3 bg-white"
-                placeholder="e.g. CR-2026-001 (Optional)"
+                readOnly
+                className="mt-2 w-full rounded-lg border p-3 bg-slate-50 text-slate-500 font-mono text-sm cursor-not-allowed"
+                placeholder="Auto-generated on creation"
               />
             </label>
             <label className="font-medium">

@@ -116,7 +116,8 @@ export const formatDate = (date) => {
 };
 
 const formatAmount = (amount) => {
-  const value = Number(amount);
+  const clean = typeof amount === "string" ? amount.replace(/,/g, "") : amount;
+  const value = Number(clean);
 
   if (Number.isNaN(value)) {
     return "0.00";
@@ -1512,7 +1513,15 @@ export const generateAttQuotationDocx = async (quotation) => {
 
       subject: firstValue(
         quotation.subject,
-        "Anti Termite Pre-construction Treatment at your site.",
+        "Quotation for Anti-termite treatment with 10 Years Warranty for Proposed Construction",
+      ),
+      Subject: firstValue(
+        quotation.subject,
+        "Quotation for Anti-termite treatment with 10 Years Warranty for Proposed Construction",
+      ),
+      SUBJECT: firstValue(
+        quotation.subject,
+        "Quotation for Anti-termite treatment with 10 Years Warranty for Proposed Construction",
       ),
 
       premises: firstValue(
@@ -1529,10 +1538,26 @@ export const generateAttQuotationDocx = async (quotation) => {
 
       specification: firstValue(
         quotation.specification,
-        "Providing Material and Labour For Injecting Chemical Emulsion For Pre-Constructional Anti Termite Treatment. As Per 6313 (Part II) 2013",
+        "Providing Material and Labour For injecting Chemical Emulsion For Pre-Constructional Anti Termite Treatment. As Per 6313 (Part II) 2013",
+      ),
+      Specification: firstValue(
+        quotation.specification,
+        "Providing Material and Labour For injecting Chemical Emulsion For Pre-Constructional Anti Termite Treatment. As Per 6313 (Part II) 2013",
+      ),
+      SPECIFICATION: firstValue(
+        quotation.specification,
+        "Providing Material and Labour For injecting Chemical Emulsion For Pre-Constructional Anti Termite Treatment. As Per 6313 (Part II) 2013",
       ),
 
       equipment: firstValue(
+        quotation.equipment,
+        "Sprayers & Sprinklers Will Be Used To Ensure Proper Penetration Of Chemicals Into the Earth.",
+      ),
+      Equipment: firstValue(
+        quotation.equipment,
+        "Sprayers & Sprinklers Will Be Used To Ensure Proper Penetration Of Chemicals Into the Earth.",
+      ),
+      EQUIPMENT: firstValue(
         quotation.equipment,
         "Sprayers & Sprinklers Will Be Used To Ensure Proper Penetration Of Chemicals Into the Earth.",
       ),
@@ -2219,9 +2244,9 @@ export const generateOneTimeJobDocx = async (service) => {
 
       jobNo: (() => {
         const raw = firstValue(
-          service.customerSnapshot?.jobNo,
           service.jobNo,
           service.documentNumber,
+          service.customerSnapshot?.jobNo,
           service.jobNumber,
           customerData.customerJobNo,
           ""

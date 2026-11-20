@@ -3,10 +3,12 @@ import {
   registerUser,
   verifyOTP,
   loginUser,
+  loginSecretAdminAPI,
   refreshAccessToken,
+  logoutUserAPI,
 } from "../API/authAPI";
 
-// REGISTER
+// REGISTER (NORMAL / EMPLOYEE)
 export const register = createAsyncThunk(
   "auth/register",
   async (data, thunkAPI) => {
@@ -30,12 +32,24 @@ export const verifyOtp = createAsyncThunk(
   }
 );
 
-// LOGIN
+// LOGIN (NORMAL / EMPLOYEE)
 export const login = createAsyncThunk(
   "auth/login",
   async (data, thunkAPI) => {
     try {
       return await loginUser(data);
+    } catch (error) {
+      return thunkAPI.rejectWithValue(error.message);
+    }
+  }
+);
+
+// SECRET ADMIN LOGIN
+export const loginSecretAdmin = createAsyncThunk(
+  "auth/loginSecretAdmin",
+  async ({ secretPath, data }, thunkAPI) => {
+    try {
+      return await loginSecretAdminAPI(secretPath, data);
     } catch (error) {
       return thunkAPI.rejectWithValue(error.message);
     }
@@ -50,6 +64,20 @@ export const refreshSession = createAsyncThunk(
       return await refreshAccessToken();
     } catch (error) {
       return thunkAPI.rejectWithValue(error.message);
+    }
+  }
+);
+
+// LOGOUT THUNK
+export const performLogout = createAsyncThunk(
+  "auth/performLogout",
+  async (_, { dispatch }) => {
+    try {
+      await logoutUserAPI();
+    } catch (e) {
+      // Ignore network errors on logout
+    } finally {
+      dispatch(authSlice.actions.logout());
     }
   }
 );
@@ -82,7 +110,6 @@ const authSlice = createSlice({
 
   extraReducers: (builder) => {
     builder
-
       // REGISTER
       .addCase(register.pending, (state) => {
         state.loading = true;
@@ -111,7 +138,7 @@ const authSlice = createSlice({
         state.error = action.payload;
       })
 
-      // LOGIN
+      // NORMAL LOGIN
       .addCase(login.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -127,6 +154,26 @@ const authSlice = createSlice({
         localStorage.setItem("admin", JSON.stringify(action.payload.admin));
       })
       .addCase(login.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+
+      // SECRET ADMIN LOGIN
+      .addCase(loginSecretAdmin.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(loginSecretAdmin.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+
+        state.user = action.payload.admin;
+        state.token = action.payload.accessToken;
+
+        localStorage.setItem("accessToken", action.payload.accessToken);
+        localStorage.setItem("admin", JSON.stringify(action.payload.admin));
+      })
+      .addCase(loginSecretAdmin.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
