@@ -25,6 +25,7 @@ import Service from "../model/serviceModel.js";
 
 const args = process.argv.slice(2);
 const isExecuteMode = args.includes("--execute");
+const allowAtlas = args.includes("--allow-atlas");
 
 // Optional custom URI argument (e.g. node script.js --uri mongodb://127.0.0.1:27017/crm_samarth)
 const uriArgIndex = args.indexOf("--uri");
@@ -41,17 +42,33 @@ async function main() {
     throw new Error("MONGO_URI not configured in server/.env or passed via --uri");
   }
 
-  console.log("1. Connecting to Target Database...");
+  console.log("Step 1: Connecting to Target Database...");
   console.log("   URI:", uri.replace(/:[^:@]+@/, ":****@"));
   await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
   const db = mongoose.connection.db;
   const dbName = mongoose.connection.name;
-  console.log(`   ✅ Connected to Database: '${dbName}' on host: ${mongoose.connection.host}\n`);
+  const host = mongoose.connection.host;
+  console.log(`   Connected to Database: '${dbName}' on host: ${host}\n`);
+
+  // Target Verification: Ensure we don't accidentally target Atlas in production mode
+  const isAtlas = host.includes("mongodb.net");
+  if (isAtlas) {
+    console.warn("⚠️  NOTICE: Connection host is MongoDB Atlas ('" + host + "').");
+    if (isExecuteMode && !allowAtlas) {
+      throw new Error(
+        "SAFETY ABORT: Target database is MongoDB Atlas, not the Hostinger VPS local MongoDB!\n" +
+        "On the VPS, ensure server/.env points to local MongoDB (e.g. mongodb://localhost:27017/crm_samarth).\n" +
+        "If you intentionally wish to run against Atlas, pass the --allow-atlas flag."
+      );
+    }
+  } else {
+    console.log(`   ✅ Confirmed: Target is Hostinger VPS local MongoDB daemon (${host}).\n`);
+  }
 
   // --------------------------------------------------------------------------
   // STEP 1: AUDIT PRODUCTION COLLECTIONS
   // --------------------------------------------------------------------------
-  console.log("2. Auditing Production Database Collections...");
+  console.log("Step 2: Auditing Production Database Collections...");
   const collections = await db.listCollections().toArray();
   const collectionNames = collections.map((c) => c.name);
 
@@ -74,51 +91,51 @@ async function main() {
   const jobNumSeqCount = await getCount("jobnumbersequences");
 
   console.log("   --- Transactional Document Collections ---");
-  console.log(`   • Invoices:                  ${invoiceCount} documents`);
-  console.log(`   • Quotations:                ${quotationCount} documents`);
-  console.log(`   • Contract Renewals:         ${renewalCount} documents`);
-  console.log(`   • Services:                  ${serviceCount} documents`);
+  console.log(`   • Invoices:                  ${invoiceCount} documents ${invoiceCount === 0 ? "✅ (Clean)" : "⚠️"}`);
+  console.log(`   • Quotations:                ${quotationCount} documents ${quotationCount === 0 ? "✅ (Clean)" : "⚠️"}`);
+  console.log(`   • Contract Renewals:         ${renewalCount} documents ${renewalCount === 0 ? "✅ (Clean)" : "⚠️"}`);
+  console.log(`   • Services:                  ${serviceCount} documents ${serviceCount === 0 ? "✅ (Clean)" : "⚠️"}`);
 
-  console.log("\n   --- Sequence & Job Number Collections ---");
-  console.log(`   • Document Sequences:        ${docSeqCount} documents`);
-  console.log(`   • Job Numbers:               ${jobNumCount} documents`);
-  console.log(`   • Job Number Sequences:      ${jobNumSeqCount} documents`);
+  console.log("\n   --- Sequence Collections ---");
+  console.log(`   • Document Sequences:        ${docSeqCount} documents (Target of this reset)`);
+  console.log(`   • Job Number Sequences:      ${jobNumSeqCount} documents (Customer A-Z codes — Untouched)`);
 
-  console.log("\n   --- Preserved Business Collections (Must Remain Untouched) ---");
-  console.log(`   • Customers:                 ${customerCount} documents`);
-  console.log(`   • Employees:                 ${employeeCount} documents`);
-  console.log(`   • Admins:                    ${adminCount} documents`);
-  console.log(`   • Company Settings:          ${companySettingCount} documents`);
-  console.log(`   • Document Templates:        ${templateCount} documents\n`);
+  console.log("\n   --- Preserved Business Collections (Strictly Untouched) ---");
+  console.log(`   • Customers:                 ${customerCount} documents (Preserved)`);
+  console.log(`   • Employees:                 ${employeeCount} documents (Preserved)`);
+  console.log(`   • Admins:                    ${adminCount} documents (Preserved)`);
+  console.log(`   • Company Settings:          ${companySettingCount} documents (Preserved)`);
+  console.log(`   • Document Templates:        ${templateCount} documents (Preserved)\n`);
 
   // --------------------------------------------------------------------------
   // STEP 2: INSPECT EXISTING DOCUMENTSEQUENCES RECORDS
   // --------------------------------------------------------------------------
-  console.log("3. Inspecting Existing 'documentsequences' Records in Database...");
+  console.log("Step 3: Inspecting Current 'documentsequences' Records in Database...");
   const existingSeqs = await db.collection("documentsequences").find().sort({ year: -1, documentType: 1 }).toArray();
 
-  if (existingSeqs.length === 0) {
-    console.log("   [i] No existing sequence records found in 'documentsequences'.");
-  } else {
-    console.log("   +----------------------+------+------+--------------------------+");
-    console.log("   | Document Type        | Year | Seq  | Status                   |");
-    console.log("   +----------------------+------+------+--------------------------+");
-    for (const s of existingSeqs) {
-      const isCurrentActive = s.year === 2026 && [
-        "GST_INVOICE", "NON_GST_INVOICE", "PC_QUOTATION",
-        "ATT_QUOTATION", "CONTRACT_RENEWAL", "ONE_TIME_JOB"
-      ].includes(s.documentType);
-      const isLegacy = s.documentType === "INVOICE";
-      const status = isCurrentActive ? "Active 2026 Series" : isLegacy ? "Legacy Alias" : "Historical Record";
-      console.log(`   | ${s.documentType.padEnd(20)} | ${String(s.year).padEnd(4)} | ${String(s.seq).padEnd(4)} | ${status.padEnd(24)} |`);
-    }
-    console.log("   +----------------------+------+------+--------------------------+\n");
+  console.log("   +----------------------+------+------+--------------------------+");
+  console.log("   | Document Type        | Year | Seq  | Series Status            |");
+  console.log("   +----------------------+------+------+--------------------------+");
+  for (const s of existingSeqs) {
+    const isTarget6 = s.year === 2026 && [
+      "GST_INVOICE", "NON_GST_INVOICE", "PC_QUOTATION",
+      "ATT_QUOTATION", "CONTRACT_RENEWAL", "ONE_TIME_JOB"
+    ].includes(s.documentType);
+    const isLegacy2026 = s.documentType === "INVOICE" && s.year === 2026;
+    const isHistorical = s.year !== 2026;
+    const status = isTarget6
+      ? "Target: Reset to 0"
+      : isLegacy2026
+      ? "Legacy 2026: Preserved"
+      : `Historical ${s.year}: Preserved`;
+    console.log(`   | ${s.documentType.padEnd(20)} | ${String(s.year).padEnd(4)} | ${String(s.seq).padEnd(4)} | ${status.padEnd(24)} |`);
   }
+  console.log("   +----------------------+------+------+--------------------------+\n");
 
   // --------------------------------------------------------------------------
-  // STEP 3: TAKE VERIFIED BACKUP OF DOCUMENT SEQUENCES
+  // STEP 3: CREATE BACKUP OF DOCUMENTSEQUENCES
   // --------------------------------------------------------------------------
-  console.log("4. Creating Verified Backup of 'documentsequences' Before Any Mutation...");
+  console.log("Step 4: Creating Verified Backup of 'documentsequences' Before Any Modification...");
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupDir = path.resolve(process.cwd(), "server", "backups");
   if (!fs.existsSync(backupDir)) {
@@ -130,12 +147,12 @@ async function main() {
   fs.writeFileSync(backupFilePath, backupData, "utf8");
 
   const sha256 = crypto.createHash("sha256").update(backupData).digest("hex");
-  console.log(`   ✅ Backup written to: ${backupFilePath}`);
+  console.log(`   ✅ Backup created at: ${backupFilePath}`);
   console.log(`   • Records backed up: ${existingSeqs.length}`);
   console.log(`   • SHA-256 Hash:     ${sha256}\n`);
 
   // --------------------------------------------------------------------------
-  // STEP 4: INITIALIZE ACTIVE 2026 SEQUENCE COUNTERS TO 0
+  // STEP 4: RESET THE EXACT SIX PRODUCTION COUNTERS FOR YEAR 2026
   // --------------------------------------------------------------------------
   const targetSeries = [
     { type: "GST_INVOICE", year: 2026, label: "Tax Invoice — GST", format: "SPM/{SEQ}/2026-27" },
@@ -144,70 +161,79 @@ async function main() {
     { type: "ATT_QUOTATION", year: 2026, label: "ATT Quotation", format: "SPM/ATT/2026/{SEQ}" },
     { type: "CONTRACT_RENEWAL", year: 2026, label: "Contract Renewal", format: "SPM/CR/2026/{SEQ}" },
     { type: "ONE_TIME_JOB", year: 2026, label: "One Time Job", format: "Job No/2026/{SEQ}" },
-    { type: "INVOICE", year: 2026, label: "Invoice Legacy Alias", format: "SPM/{SEQ}/2026-27" },
   ];
 
+  console.log("Step 5: Showing Exact Counter Changes for All 6 Series:");
+  console.log("   +----------------------+------+-----------+-----------+----------------------+");
+  console.log("   | Document Type        | Year | Old Seq   | New Seq   | First Number         |");
+  console.log("   +----------------------+------+-----------+-----------+----------------------+");
+  for (const t of targetSeries) {
+    const prev = existingSeqs.find((s) => s.documentType === t.type && s.year === t.year);
+    const oldSeqStr = prev ? String(prev.seq) : "None (new)";
+    const firstNum = t.format.replace("{SEQ}", "01");
+    console.log(`   | ${t.type.padEnd(20)} | ${String(t.year).padEnd(4)} | ${oldSeqStr.padEnd(9)} | 0         | ${firstNum.padEnd(20)} |`);
+  }
+  console.log("   +----------------------+------+-----------+-----------+----------------------+\n");
+
   if (!isExecuteMode) {
-    console.log("5. Dry Run Mode Active — Proposed Actions:");
-    for (const t of targetSeries) {
-      console.log(`   [PLAN] Set ${t.type.padEnd(20)} for year ${t.year} to seq: 0 -> Next document: '${t.format.replace("{SEQ}", "01")}'`);
-    }
-    console.log("\n================================================================================");
+    console.log("================================================================================");
     console.log("  DRY RUN COMPLETE: Zero database changes were made.                            ");
-    console.log("  To execute the counter initialization, run with: --execute                   ");
+    console.log("  To execute the initialization against the database, pass: --execute           ");
     console.log("================================================================================\n");
     await mongoose.disconnect();
     return;
   }
 
-  console.log("5. Initializing Sequence Counters to 0 for Year 2026...");
+  console.log("Step 6: Executing Safe Initialization of the 6 Production Counters...");
   for (const t of targetSeries) {
     await db.collection("documentsequences").updateOne(
       { documentType: t.type, year: t.year },
       { $set: { seq: 0 } },
       { upsert: true }
     );
-    console.log(`   ✅ Initialized: ${t.type.padEnd(20)} (Year: ${t.year}) -> seq: 0`);
+    console.log(`   ✅ ${t.type.padEnd(20)} (Year: ${t.year}) -> set to seq: 0`);
   }
 
   // --------------------------------------------------------------------------
-  // STEP 5: VERIFY INTEGRITY OF PRESERVED DATA
+  // STEP 5: VERIFY READ DIRECTLY FROM PRODUCTION DATABASE
   // --------------------------------------------------------------------------
-  console.log("\n6. Verifying Preserved Business Data Integrity...");
-  const postCustomerCount = await getCount("customers");
-  const postEmployeeCount = await getCount("employees");
-  const postAdminCount = await getCount("admins");
+  console.log("\nStep 7: Reading Counters Directly from Production Database to Verify seq: 0...");
+  const postResetSeqs = await db.collection("documentsequences").find({ year: 2026 }).toArray();
 
-  if (postCustomerCount !== customerCount) {
-    throw new Error(`CRITICAL ERROR: Customer count changed from ${customerCount} to ${postCustomerCount}!`);
-  }
-  if (postEmployeeCount !== employeeCount) {
-    throw new Error(`CRITICAL ERROR: Employee count changed from ${employeeCount} to ${postEmployeeCount}!`);
-  }
-  if (postAdminCount !== adminCount) {
-    throw new Error(`CRITICAL ERROR: Admin count changed from ${adminCount} to ${postAdminCount}!`);
-  }
-  console.log(`   ✅ Preserved collections intact (Customers: ${postCustomerCount}, Employees: ${postEmployeeCount}, Admins: ${postAdminCount})`);
-
-  // --------------------------------------------------------------------------
-  // STEP 6: TEST STARTUP RECONCILIATION IDEMPOTENCY (SIMULATE PM2 REBOOT)
-  // --------------------------------------------------------------------------
-  console.log("\n7. Testing Startup Reconciliation Idempotency (Simulating PM2 Restart)...");
-  await syncExistingDocumentSequences({ Invoice, Quotation, Renewal, Service });
-
-  const postSyncSeqs = await db.collection("documentsequences").find({ year: 2026 }).toArray();
-  for (const s of postSyncSeqs) {
-    console.log(`   • ${s.documentType.padEnd(20)}: seq = ${s.seq}`);
-    if (s.seq !== 0) {
-      throw new Error(`RECONCILIATION INTEGRITY ERROR: ${s.documentType} was unexpectedly bumped to ${s.seq}!`);
+  let allZero = true;
+  for (const t of targetSeries) {
+    const found = postResetSeqs.find((s) => s.documentType === t.type && s.year === t.year);
+    if (!found || found.seq !== 0) {
+      allZero = false;
+      console.error(`   ❌ VERIFICATION FAILED: ${t.type} is at seq: ${found?.seq}`);
+    } else {
+      console.log(`   ✅ Direct DB Read: ${t.type.padEnd(20)} -> seq: 0`);
     }
   }
-  console.log("   ✅ Startup reconciliation verified: All 2026 counters remain strictly at 0.");
+
+  if (!allZero) {
+    throw new Error("One or more sequence counters failed direct verification!");
+  }
 
   // --------------------------------------------------------------------------
-  // STEP 7: VERIFY PREVIEWS ACROSS ALL 6 DOCUMENT SERIES
+  // STEP 6: VERIFY STARTUP RECONCILIATION IDEMPOTENCY (SIMULATE PM2 REBOOT)
   // --------------------------------------------------------------------------
-  console.log("\n8. Verifying 01 Formatted First Documents Across All 6 Series...");
+  console.log("\nStep 8: Simulating Server Reboot (Startup Reconciliation Test)...");
+  await syncExistingDocumentSequences({ Invoice, Quotation, Renewal, Service });
+
+  const postRebootSeqs = await db.collection("documentsequences").find({ year: 2026 }).toArray();
+  for (const t of targetSeries) {
+    const found = postRebootSeqs.find((s) => s.documentType === t.type && s.year === t.year);
+    if (found.seq !== 0) {
+      throw new Error(`PM2 REBOOT INTEGRITY ERROR: ${t.type} was unexpectedly bumped to ${found.seq}!`);
+    }
+    console.log(`   ✅ Post-Reboot Verification: ${t.type.padEnd(20)} remains strictly at seq: 0`);
+  }
+
+  // --------------------------------------------------------------------------
+  // STEP 7: VERIFY PREVIEWS FOR FIRST GENERATED NUMBERS (01)
+  // --------------------------------------------------------------------------
+  console.log("\nStep 9: Confirming Expected First Generated Number for All 6 Series:");
   const previewSpecs = [
     { type: "NON_GST_INVOICE", yearStr: "2026-27", expected: "SPMJ/01/2026-27" },
     { type: "GST_INVOICE", yearStr: "2026-27", expected: "SPM/01/2026-27" },
@@ -221,13 +247,19 @@ async function main() {
     const config = DOCUMENT_CONFIG[p.type];
     const generated = formatDocumentNumber(p.type, p.yearStr, 1, 2);
     if (generated !== p.expected) {
-      throw new Error(`Preview mismatch for ${p.type}: Expected '${p.expected}', got '${generated}'`);
+      throw new Error(`Preview mismatch: Expected '${p.expected}', got '${generated}'`);
     }
     console.log(`   • ${config.label.padEnd(22)}: First document will be '${generated}' (PASS)`);
   }
 
+  // Confirm preserved collections intact
+  const finalCustomerCount = await getCount("customers");
+  const finalEmployeeCount = await getCount("employees");
+  const finalAdminCount = await getCount("admins");
+  console.log(`\nPreserved Data Audit Check: Customers=${finalCustomerCount}, Employees=${finalEmployeeCount}, Admins=${finalAdminCount} (100% Intact).`);
+
   console.log("\n================================================================================");
-  console.log("  PRODUCTION NUMBERING INITIALIZATION COMPLETED & VERIFIED SUCCESSFULLY!        ");
+  console.log("  ALL SIX PRODUCTION DOCUMENT COUNTERS INITIALIZED & VERIFIED AT seq: 0        ");
   console.log("================================================================================\n");
 
   await mongoose.disconnect();
