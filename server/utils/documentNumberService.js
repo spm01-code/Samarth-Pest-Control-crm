@@ -408,7 +408,9 @@ export const syncExistingDocumentSequences = async (models = {}) => {
 
   // 1. Invoices (Separate counters for NON_GST_INVOICE and GST_INVOICE)
   if (Invoice) {
-    const invoices = await Invoice.find().select("invoiceNumber invoiceType");
+    const invoices = await Invoice.find({ isDeleted: { $ne: true } }).select(
+      "invoiceNumber invoiceType"
+    );
     for (const inv of invoices) {
       if (!inv.invoiceNumber) continue;
       const numStr = String(inv.invoiceNumber).trim();
@@ -472,7 +474,7 @@ export const syncExistingDocumentSequences = async (models = {}) => {
 
   // 2. Quotations (Separate counters for PC_QUOTATION and ATT_QUOTATION)
   if (Quotation) {
-    const quotations = await Quotation.find().select(
+    const quotations = await Quotation.find({ isDeleted: { $ne: true } }).select(
       "quotationNumber quotationType"
     );
     for (const q of quotations) {
@@ -518,7 +520,9 @@ export const syncExistingDocumentSequences = async (models = {}) => {
 
   // 3. Renewals (CONTRACT_RENEWAL)
   if (Renewal) {
-    const renewals = await Renewal.find().select("renewalNumber");
+    const renewals = await Renewal.find({ isDeleted: { $ne: true } }).select(
+      "renewalNumber"
+    );
     for (const r of renewals) {
       if (!r.renewalNumber) continue;
       const rNumStr = String(r.renewalNumber).trim();
@@ -561,6 +565,7 @@ export const syncExistingDocumentSequences = async (models = {}) => {
   // 4. One Time Jobs (ONE_TIME_JOB)
   if (Service) {
     const jobs = await Service.find({
+      isDeleted: { $ne: true },
       $or: [
         { jobNo: { $exists: true, $ne: "" } },
         { documentNumber: { $exists: true, $ne: "" } },
