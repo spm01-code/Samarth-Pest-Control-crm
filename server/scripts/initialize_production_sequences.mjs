@@ -184,6 +184,15 @@ async function main() {
     return;
   }
 
+  // Pre-execution validation: Ensure transactional collections are strictly empty
+  if (invoiceCount > 0 || quotationCount > 0 || renewalCount > 0 || serviceCount > 0) {
+    throw new Error(
+      `SAFETY ABORT: Transactional collections are not empty!\n` +
+      `   Invoices: ${invoiceCount}, Quotations: ${quotationCount}, Renewals: ${renewalCount}, Services: ${serviceCount}\n` +
+      `   Refusing to reset sequence counters to protect documents from numbering collisions.`
+    );
+  }
+
   console.log("Step 6: Executing Safe Initialization of the 6 Production Counters...");
   for (const t of targetSeries) {
     await db.collection("documentsequences").updateOne(
