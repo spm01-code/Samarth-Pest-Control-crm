@@ -40,14 +40,21 @@ router.post("/secure/:secretPath/register", registerSecretAdmin);
 router.post("/secure/:secretPath/verifyotp", verifyOTP);
 
 // Direct secret-access path support
+const configuredAdminSecret =
+  process.env.ADMIN_SECRET_PATH || "6827b866034a1eadadfac16a5b34aa69";
+
 router.post("/:secretPath/login", (req, res, next) => {
-  if (req.params.secretPath === process.env.ADMIN_SECRET_PATH) {
+  if (
+    req.params.secretPath === (process.env.ADMIN_SECRET_PATH || configuredAdminSecret)
+  ) {
     return loginSecretAdmin(req, res, next);
   }
   return res.status(404).json({ message: "Route not found" });
 });
 router.post("/:secretPath/register", (req, res, next) => {
-  if (req.params.secretPath === process.env.ADMIN_SECRET_PATH) {
+  if (
+    req.params.secretPath === (process.env.ADMIN_SECRET_PATH || configuredAdminSecret)
+  ) {
     return registerSecretAdmin(req, res, next);
   }
   return res.status(404).json({ message: "Route not found" });

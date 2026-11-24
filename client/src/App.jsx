@@ -100,6 +100,10 @@ function App() {
           path="/secure-access/:secretPath/register"
           element={!token ? <AdminRegister /> : <Navigate to="/" />}
         />
+        <Route
+          path="/secure-access/:secretPath"
+          element={<Navigate to="login" replace />}
+        />
 
         {/* Dashboard Layout: Protected by Token */}
         <Route element={token ? <DashboardLayout /> : <Navigate to="/login" />}>
