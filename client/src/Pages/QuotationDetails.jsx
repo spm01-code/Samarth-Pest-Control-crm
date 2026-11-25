@@ -13,6 +13,7 @@ import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateOnly as formatDate, formatTimestamp } from "../utils/dateUtils";
 import usePermission from "../hooks/usePermission";
+import { formatPaymentBasis } from "../utils/paymentBasis";
 
 const statusStyles = {
   Draft: "bg-gray-100 text-gray-700",
@@ -394,6 +395,7 @@ function QuotationDetails() {
                     <th className="p-4 font-medium">Period of Warranty</th>
                     <th className="p-4 font-medium">Chemical Used</th>
                     <th className="p-4 font-medium">Service Charges</th>
+                    <th className="p-4 font-medium">Payment Basis</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -410,6 +412,9 @@ function QuotationDetails() {
                       <td className="p-4">{treatment.chemicalUsed || "-"}</td>
                       <td className="p-4 font-medium">
                         {treatment.serviceCharges || "-"}
+                      </td>
+                      <td className="p-4 text-sm text-slate-600">
+                        {formatPaymentBasis(treatment.paymentBasis)}
                       </td>
                     </tr>
                   ))}
@@ -438,6 +443,7 @@ function QuotationDetails() {
                     <th className="p-4 font-medium">Location</th>
                     <th className="p-4 font-medium">Frequency</th>
                     <th className="p-4 text-right font-medium">Cost</th>
+                    <th className="p-4 font-medium">Payment Basis</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -457,6 +463,9 @@ function QuotationDetails() {
                       <td className="p-4 text-right font-medium">
                         ₹{formatAmount(service.cost)}
                       </td>
+                      <td className="p-4 text-sm text-slate-600">
+                        {formatPaymentBasis(service.paymentBasis)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -471,6 +480,7 @@ function QuotationDetails() {
                     <td className="p-4 text-right text-lg font-bold">
                       ₹{formatAmount(totalCost)}
                     </td>
+                    <td className="p-4" />
                   </tr>
                 </tfoot>
               </table>

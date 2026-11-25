@@ -7,6 +7,7 @@ import { fetchServices } from "../slices/serviceSlice";
 import {
   isMultiDateFrequency,
   calculateServiceDates,
+  parseToUtcDate,
 } from "../utils/serviceDateCalculator";
 import { FaSearch } from "react-icons/fa";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
@@ -14,9 +15,13 @@ import { formatDateOnly as formatDate } from "../utils/dateUtils";
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 const getStartOfDay = (date) => {
-  const value = new Date(date);
-  value.setHours(0, 0, 0, 0);
-  return value;
+  const utc = parseToUtcDate(date);
+  if (!utc) {
+    const value = new Date(date);
+    value.setHours(0, 0, 0, 0);
+    return value;
+  }
+  return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate(), 0, 0, 0, 0);
 };
 
 const getCurrentMonthRange = () => {
@@ -30,7 +35,7 @@ const getCurrentMonthRange = () => {
 
 const isDateInMonth = (date, startOfMonth, endOfMonth) => {
   if (!date) return false;
-  const d = new Date(date);
+  const d = getStartOfDay(date);
   if (Number.isNaN(d.getTime())) return false;
   return d.getTime() >= startOfMonth.getTime() && d.getTime() <= endOfMonth.getTime();
 };

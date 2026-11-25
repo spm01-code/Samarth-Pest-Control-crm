@@ -7,12 +7,14 @@ import {
   normalizeFrequency,
   isMultiDateFrequency,
   isOneTimeJobService,
+  parseToUtcDate,
 } from "../utils/serviceDateCalculator.js";
 import { generateDocumentNumber } from "../utils/documentNumberService.js";
 import { generateOneTimeJobDocx } from "../utils/docGenerator.js";
 import { convertDocxToPdf } from "../utils/docxToPdf.js";
+import { parsePaymentBasis } from "../utils/paymentBasisHelper.js";
 
-const getIndiaDateBoundaries = () => {
+export const getIndiaDateBoundaries = () => {
   const dateParts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Kolkata",
     year: "numeric",
@@ -35,19 +37,21 @@ const getIndiaDateBoundaries = () => {
 const ensureUpcomingDates = (service) => {
   if (!service) return service;
   const doc = service.toObject ? service.toObject() : { ...service };
-  if (
-    isMultiDateFrequency(doc.frequency) &&
-    (!doc.upcomingServiceDates || doc.upcomingServiceDates.length === 0) &&
-    doc.serviceDate
-  ) {
+  const { today } = getIndiaDateBoundaries();
+
+  if (isOneTimeJobService(doc)) {
+    doc.upcomingServiceDates = [];
+    doc.nextServiceDate = null;
+  } else if (doc.serviceDate && doc.frequency) {
     const { upcomingServiceDates, nextServiceDate } = calculateServiceDates(
       doc.serviceDate,
-      doc.frequency
+      doc.frequency,
+      today
     );
-    doc.upcomingServiceDates = upcomingServiceDates;
-    if (!doc.nextServiceDate) {
-      doc.nextServiceDate = nextServiceDate;
+    if (!Array.isArray(doc.upcomingServiceDates) || doc.upcomingServiceDates.length === 0) {
+      doc.upcomingServiceDates = upcomingServiceDates;
     }
+    doc.nextServiceDate = nextServiceDate;
   }
 
   // Ensure consistent customerName on output
@@ -108,32 +112,145 @@ const ensureUpcomingDates = (service) => {
   return doc;
 };
 
-const syncServiceStatuses = async (serviceId) => {
+/**
+ * Computes authoritative nextServiceDate, missing upcomingServiceDates, and status
+ * updates for a service record using calculateServiceDates without touching
+ * non-empty legacy schedules or billing fields.
+ */
+export const computeAuthoritativeServiceSync = (srv, today, tomorrow) => {
+  const todayMs = today.getTime();
+  const tomorrowMs = tomorrow.getTime();
+  const isOneTime = isOneTimeJobService(srv);
+
+  let authNext = null;
+  let authUpcoming = [];
+
+  if (!isOneTime) {
+    if (!srv.serviceDate || !srv.frequency) {
+      return { skipped: true, updates: {}, authNext: null };
+    }
+    const calculated = calculateServiceDates(
+      srv.serviceDate,
+      srv.frequency,
+      today,
+    );
+    authNext = calculated?.nextServiceDate ?? null;
+    authUpcoming = Array.isArray(calculated?.upcomingServiceDates)
+      ? calculated.upcomingServiceDates
+      : [];
+  }
+
+  const existingNextMs = srv.nextServiceDate
+    ? new Date(srv.nextServiceDate).getTime()
+    : null;
+  const authNextMs = authNext ? authNext.getTime() : null;
+
+  const updates = {};
+
+  if (
+    (existingNextMs === null && authNextMs !== null) ||
+    (existingNextMs !== null && authNextMs === null) ||
+    (existingNextMs !== null &&
+      authNextMs !== null &&
+      (Number.isNaN(existingNextMs) || existingNextMs !== authNextMs))
+  ) {
+    updates.nextServiceDate = authNext;
+  }
+
+  if (isOneTime) {
+    if (
+      Array.isArray(srv.upcomingServiceDates) &&
+      srv.upcomingServiceDates.length > 0
+    ) {
+      updates.upcomingServiceDates = [];
+    }
+  } else if (
+    (!Array.isArray(srv.upcomingServiceDates) ||
+      srv.upcomingServiceDates.length === 0) &&
+    authUpcoming.length > 0
+  ) {
+    updates.upcomingServiceDates = authUpcoming;
+  }
+
+  const isTerminal = srv.status === "completed" || srv.status === "cancelled";
+  if (!isTerminal) {
+    let nextStatus = srv.status;
+    if (authNextMs !== null) {
+      if (authNextMs < todayMs) {
+        nextStatus = "expired";
+      } else if (authNextMs < tomorrowMs) {
+        nextStatus = "due";
+      } else if (srv.status === "expired" || srv.status === "due") {
+        nextStatus = "active";
+      }
+    } else if (srv.status === "expired" || srv.status === "due") {
+      // Restore records falsely marked expired/due due to stale/corrupted nextServiceDate
+      const serviceDateObj = parseToUtcDate(srv.serviceDate);
+      const serviceDateMs = serviceDateObj ? serviceDateObj.getTime() : null;
+      if (serviceDateMs !== null && serviceDateMs >= todayMs) {
+        nextStatus = "active";
+      }
+    }
+
+    if (nextStatus && nextStatus !== srv.status) {
+      updates.status = nextStatus;
+    }
+  }
+
+  return { skipped: false, updates, authNext };
+};
+
+export const syncServiceStatuses = async (serviceId) => {
   const { today, tomorrow } = getIndiaDateBoundaries();
-  const baseFilter = {
+
+  const filter = {
     ...(serviceId ? { _id: serviceId } : {}),
     status: { $nin: ["completed", "cancelled"] },
-    nextServiceDate: { $ne: null },
   };
 
-  await Service.updateMany(
-    {
-      ...baseFilter,
-      nextServiceDate: { $lt: today },
-    },
-    { $set: { status: "expired" } },
-  );
+  const query = Service.find(filter);
+  const services =
+    query && typeof query.select === "function"
+      ? await query.select(
+          "_id frequency serviceDate nextServiceDate upcomingServiceDates status serviceType isOneTimeJob",
+        )
+      : await query;
 
-  await Service.updateMany(
-    {
-      ...baseFilter,
-      nextServiceDate: {
-        $gte: today,
-        $lt: tomorrow,
+  if (!Array.isArray(services) || services.length === 0) {
+    return { inspected: 0, modified: 0 };
+  }
+
+  const bulkOps = [];
+
+  for (const srv of services) {
+    const { skipped, updates } = computeAuthoritativeServiceSync(
+      srv,
+      today,
+      tomorrow,
+    );
+    if (skipped || Object.keys(updates).length === 0) {
+      continue;
+    }
+
+    bulkOps.push({
+      updateOne: {
+        filter: { _id: srv._id },
+        update: { $set: updates },
       },
-    },
-    { $set: { status: "due" } },
-  );
+    });
+  }
+
+  if (bulkOps.length > 0) {
+    if (typeof Service.bulkWrite === "function") {
+      await Service.bulkWrite(bulkOps);
+    } else if (typeof Service.updateOne === "function") {
+      for (const op of bulkOps) {
+        await Service.updateOne(op.updateOne.filter, op.updateOne.update);
+      }
+    }
+  }
+
+  return { inspected: services.length, modified: bulkOps.length };
 };
 
 // Create Service
@@ -143,6 +260,18 @@ export const createService = async (req, res) => {
 
     if (payload.frequency) {
       payload.frequency = normalizeFrequency(payload.frequency);
+    }
+
+    const parsedBasis = parsePaymentBasis(payload.paymentBasis);
+    if (!parsedBasis.valid) {
+      return res.status(400).json({
+        message: parsedBasis.error,
+      });
+    }
+    if (parsedBasis.value) {
+      payload.paymentBasis = parsedBasis.value;
+    } else {
+      delete payload.paymentBasis;
     }
 
     const isOneTime = payload.frequency === "one-time";
@@ -302,13 +431,23 @@ export const createService = async (req, res) => {
       };
     }
 
+    // Always ignore manual nextServiceDate inputs; schedule is auto-calculated
+    delete payload.nextServiceDate;
+
     if (payload.serviceDate && payload.frequency) {
+      const normalizedStart = parseToUtcDate(payload.serviceDate);
+      if (normalizedStart) {
+        payload.serviceDate = normalizedStart;
+      }
+
+      const { today } = getIndiaDateBoundaries();
       const { nextServiceDate, upcomingServiceDates } = calculateServiceDates(
         payload.serviceDate,
-        payload.frequency
+        payload.frequency,
+        today
       );
-      payload.nextServiceDate = nextServiceDate;
       payload.upcomingServiceDates = upcomingServiceDates;
+      payload.nextServiceDate = isOneTime ? null : nextServiceDate;
     }
 
     const maxRetries = isOneTime ? 3 : 1;
@@ -414,6 +553,24 @@ export const updateService = async (req, res) => {
       return res.status(404).json({
         message: "Service Not Found",
       });
+    }
+
+    let unsetFields = null;
+    if (payload.paymentBasis !== undefined) {
+      const parsedBasis = parsePaymentBasis(payload.paymentBasis);
+      if (!parsedBasis.valid) {
+        return res.status(400).json({
+          message: parsedBasis.error,
+        });
+      }
+      if (parsedBasis.value) {
+        payload.paymentBasis = parsedBasis.value;
+      } else {
+        delete payload.paymentBasis;
+        if (existingService.paymentBasis) {
+          unsetFields = { paymentBasis: 1 };
+        }
+      }
     }
 
     const effectiveFreq = payload.frequency || existingService.frequency;
@@ -647,20 +804,66 @@ export const updateService = async (req, res) => {
       });
     }
 
+    // Always ignore manual nextServiceDate overrides during edits
+    delete payload.nextServiceDate;
+
     const effectiveDate = payload.serviceDate || existingService.serviceDate;
 
-    if (payload.serviceDate || payload.frequency) {
-      const { nextServiceDate, upcomingServiceDates } = calculateServiceDates(
-        effectiveDate,
-        effectiveFreq
-      );
-      payload.nextServiceDate = nextServiceDate;
-      payload.upcomingServiceDates = upcomingServiceDates;
+    const existingStartUtc = parseToUtcDate(existingService.serviceDate);
+    const incomingStartUtc =
+      payload.serviceDate !== undefined ? parseToUtcDate(payload.serviceDate) : null;
+    const serviceDateChanged = Boolean(
+      incomingStartUtc &&
+        (!existingStartUtc || incomingStartUtc.getTime() !== existingStartUtc.getTime())
+    );
+
+    const existingNormFreq = normalizeFrequency(existingService.frequency);
+    const effectiveNormFreq = normalizeFrequency(effectiveFreq);
+    const frequencyChanged = Boolean(
+      payload.frequency && effectiveNormFreq !== existingNormFreq
+    );
+
+    if (incomingStartUtc) {
+      payload.serviceDate = incomingStartUtc;
     }
+
+    const { today } = getIndiaDateBoundaries();
+
+    if (isOneTime) {
+      payload.nextServiceDate = null;
+      payload.upcomingServiceDates = [];
+    } else if (serviceDateChanged || frequencyChanged) {
+      const { nextServiceDate, upcomingServiceDates } = calculateServiceDates(
+        incomingStartUtc || effectiveDate,
+        effectiveFreq,
+        today
+      );
+      payload.upcomingServiceDates = upcomingServiceDates;
+      payload.nextServiceDate = nextServiceDate;
+    } else {
+      // Preserve existing historical upcomingServiceDates when serviceDate/frequency didn't change,
+      // while healing nextServiceDate if stored value conflicts with authoritative schedule.
+      delete payload.upcomingServiceDates;
+      const { nextServiceDate: authoritativeNext } = calculateServiceDates(
+        effectiveDate,
+        effectiveFreq,
+        today
+      );
+      const existingNextUtc = parseToUtcDate(existingService.nextServiceDate);
+      const existingTime = existingNextUtc ? existingNextUtc.getTime() : null;
+      const authTime = authoritativeNext ? authoritativeNext.getTime() : null;
+      if (existingTime !== authTime) {
+        payload.nextServiceDate = authoritativeNext;
+      }
+    }
+
+    const updateOperation = unsetFields
+      ? { ...payload, $unset: unsetFields }
+      : payload;
 
     const updatedService = await Service.findByIdAndUpdate(
       req.params.id,
-      payload,
+      updateOperation,
       { returnDocument: "after", runValidators: true }
     )
       .populate("customer")

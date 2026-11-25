@@ -16,6 +16,7 @@ import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
 import usePermission from "../hooks/usePermission";
+import { formatPaymentBasis } from "../utils/paymentBasis";
 
 function Services({ isOneTimePage = false }) {
   const dispatch = useDispatch();
@@ -215,7 +216,9 @@ function Services({ isOneTimePage = false }) {
             { value: "monthly", label: "Monthly" },
             { value: "Fourth nightly", label: "Fourth nightly" },
             { value: "Quarterly", label: "Quarterly" },
+            { value: "Half-Yearly", label: "Half-Yearly" },
             { value: "Yearly 3 services", label: "Yearly 3 services" },
+            { value: "Yearly", label: "Yearly" },
           ].map((frequency) => {
             const isActive = frequencyFilter === frequency.value;
             return (
@@ -332,12 +335,22 @@ function Services({ isOneTimePage = false }) {
                   ))}
                 </div>
               ) : (
-                <span className="whitespace-nowrap">{formatDate(service.nextServiceDate)}</span>
+                <span className="whitespace-nowrap">
+                  {formatDate(
+                    service.serviceDate && service.frequency
+                      ? calculateServiceDates(service.serviceDate, service.frequency).nextServiceDate
+                      : service.nextServiceDate,
+                    "No Upcoming Service"
+                  )}
+                </span>
               )}
             </td>
 
             <td className="p-3.5 font-semibold text-slate-900 whitespace-nowrap">
-              Rs. {service.amount?.toLocaleString() || "0"}
+              <div>Rs. {service.amount?.toLocaleString() || "0"}</div>
+              <div className="text-[11px] font-normal text-slate-500">
+                {formatPaymentBasis(service.paymentBasis)}
+              </div>
             </td>
 
             <td className="p-3.5">

@@ -8,6 +8,7 @@ import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateForInput } from "../utils/dateUtils";
 import { useScrollLock } from "../hooks/useScrollLock";
+import { PAYMENT_BASIS_OPTIONS } from "../utils/paymentBasis";
 
 const today = () => new Date().toLocaleDateString("en-CA");
 
@@ -16,6 +17,7 @@ const emptyService = () => ({
   frequency: "",
   address: "",
   amount: "",
+  paymentBasis: "",
   desc: "",
 });
 
@@ -69,6 +71,7 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
                 frequency: s.frequency || "",
                 address: s.address || "",
                 amount: s.amount || "",
+                paymentBasis: s.paymentBasis || "",
                 desc: s.desc || "",
               }))
             : [emptyService()],
@@ -137,6 +140,7 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
       services: form.services.map((service) => ({
         ...service,
         amount: Number(service.amount),
+        paymentBasis: service.paymentBasis || undefined,
       })),
     };
 
@@ -314,7 +318,7 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
               {form.services.map((service, index) => (
                 <div
                   key={index}
-                  className="grid gap-3 rounded-xl border p-4 bg-slate-50 md:grid-cols-[1.5fr_1.5fr_2fr_1fr_auto]"
+                  className="grid gap-3 rounded-xl border p-4 bg-slate-50 md:grid-cols-[1.4fr_1.2fr_1.6fr_0.9fr_1fr_auto]"
                 >
                   <div>
                     <label className="mb-1 block text-xs text-gray-600 font-medium">
@@ -375,6 +379,25 @@ function CreateRenewalModal({ isOpen, onClose, initialRenewal = null, onUpdated 
                       placeholder="Cost"
                       required
                     />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-gray-600 font-medium">
+                      Payment Basis
+                    </label>
+                    <select
+                      name="paymentBasis"
+                      value={service.paymentBasis || ""}
+                      onChange={(event) => handleServiceChange(index, event)}
+                      className="w-full rounded-lg border bg-white p-2 text-sm"
+                    >
+                      <option value="">Select Basis</option>
+                      {PAYMENT_BASIS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <button

@@ -437,8 +437,13 @@ async function runAudit() {
       const recService = createRecSrvRes.data.service;
       createdIds.services.push(recService._id);
 
-      assert(Boolean(recService.nextServiceDate), `${item.label} calculated nextServiceDate`);
-      assert(Array.isArray(recService.upcomingServiceDates) && recService.upcomingServiceDates.length > 0, `${item.label} populated upcomingServiceDates`);
+      if (item.freq === "yearly") {
+        assert(recService.nextServiceDate === null || recService.nextServiceDate === undefined, `${item.label} has no extra nextServiceDate in same 12-month cycle`);
+        assert(Array.isArray(recService.upcomingServiceDates) && recService.upcomingServiceDates.length === 0, `${item.label} has 0 extra upcomingServiceDates in same cycle`);
+      } else {
+        assert(Boolean(recService.nextServiceDate), `${item.label} calculated nextServiceDate`);
+        assert(Array.isArray(recService.upcomingServiceDates) && recService.upcomingServiceDates.length > 0, `${item.label} populated upcomingServiceDates`);
+      }
       assert(String(recService.customer?._id || recService.customer) === String(testCustomer._id), `${item.label} associated with CRM customer`);
       assert(String(recService.employee?._id || recService.employee) === String(testEmployee._id), `${item.label} associated with CRM employee`);
 

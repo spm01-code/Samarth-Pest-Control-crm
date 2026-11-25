@@ -1,17 +1,56 @@
 /**
  * Service Date Calculator
  * Handles recurrence calculations and next service dates across CRM service frequencies.
+ *
+ * Business Rule:
+ * - The initial service performed on `serviceDate` counts as Service 1.
+ * - `upcomingServiceDates` contains only the remaining future dates (totalServices - 1).
+ * - `nextServiceDate` is the next scheduled future date (>= referenceDate, or first future date),
+ *   or `null` when there are no remaining future dates in the cycle (e.g. Yearly, One-Time Job).
  */
 
-// Helper: Normalize any Date or date string to midnight UTC Date object
+// Helper: Normalize any Date or date string to midnight UTC Date object without timezone shifts
 export const parseToUtcDate = (dateInput) => {
   if (!dateInput) return null;
-  const d = new Date(dateInput);
+
+  if (typeof dateInput === "string") {
+    const trimmed = dateInput.trim();
+    if (!trimmed) return null;
+
+    // Direct YYYY-MM-DD or ISO date prefix at midnight/date-only -> extract calendar date directly
+    const isoDateMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T00:00:00(?:\.\d+)?Z?$)/);
+    if (isoDateMatch) {
+      const year = Number(isoDateMatch[1]);
+      const month = Number(isoDateMatch[2]) - 1;
+      const day = Number(isoDateMatch[3]);
+      return new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+    }
+
+    // Direct DD/MM/YYYY format
+    const dmyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmyMatch) {
+      const day = Number(dmyMatch[1]);
+      const month = Number(dmyMatch[2]) - 1;
+      const year = Number(dmyMatch[3]);
+      return new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+    }
+  }
+
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (Number.isNaN(d.getTime())) return null;
 
-  return new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0)
-  );
+  // Use UTC fields if already at UTC midnight; otherwise preserve local calendar date
+  const isUtcMidnight =
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0;
+
+  const year = isUtcMidnight ? d.getUTCFullYear() : d.getFullYear();
+  const month = isUtcMidnight ? d.getUTCMonth() : d.getMonth();
+  const day = isUtcMidnight ? d.getUTCDate() : d.getDate();
+
+  return new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
 };
 
 // Helper: Add days safely in UTC
@@ -116,6 +155,7 @@ export const isOneTimeJobService = (service) => {
 export const isMultiDateFrequency = (frequency) => {
   const norm = normalizeFrequency(frequency);
   return (
+    norm === "monthly" ||
     norm === "Quarterly" ||
     norm === "Half-Yearly" ||
     norm === "Yearly 3 services" ||
@@ -125,9 +165,34 @@ export const isMultiDateFrequency = (frequency) => {
 };
 
 /**
+ * Helper to generate `count - 1` future dates at fixed month intervals after `serviceDate`
+ * (since `serviceDate` itself counts as Service 1 of `count` total services).
+ */
+const buildMonthlyCycleFutureDates = (serviceDate, totalServices, intervalMonths) => {
+  const futureDates = [];
+  for (let i = 1; i < totalServices; i++) {
+    futureDates.push(addMonthsClamped(serviceDate, i * intervalMonths));
+  }
+  return futureDates;
+};
+
+const pickNextServiceDate = (upcomingServiceDates, referenceDate) => {
+  if (!Array.isArray(upcomingServiceDates) || upcomingServiceDates.length === 0) {
+    return null;
+  }
+  const upcoming = upcomingServiceDates.find(
+    (d) => d.getTime() >= referenceDate.getTime()
+  );
+  return upcoming || upcomingServiceDates[0];
+};
+
+/**
  * Calculates upcomingServiceDates and nextServiceDate.
  *
- * @param {Date|string} serviceDateInput - Service started date
+ * Service 1 is always `serviceDate` (the service creation/initial date).
+ * `upcomingServiceDates` contains only the remaining scheduled future dates.
+ *
+ * @param {Date|string} serviceDateInput - Initial service date (Service 1)
  * @param {string} frequencyInput - Frequency string
  * @param {Date|string} [referenceDateInput=new Date()] - Reference date (today) for nextServiceDate determination
  * @returns {{ nextServiceDate: Date|null, upcomingServiceDates: Date[] }}
@@ -145,11 +210,12 @@ export const calculateServiceDates = (
   const frequency = normalizeFrequency(frequencyInput);
   const referenceDate = parseToUtcDate(referenceDateInput) || parseToUtcDate(new Date());
 
-  let upcomingServiceDates = [];
-  let nextServiceDate = null;
+  let upcomingServiceDates;
+  let nextServiceDate;
 
   switch (frequency) {
     case "one-time": {
+      // Single service on serviceDate; no recurring future dates
       upcomingServiceDates = [];
       nextServiceDate = null;
       break;
@@ -169,60 +235,38 @@ export const calculateServiceDates = (
     }
 
     case "monthly": {
-      nextServiceDate = addMonthsClamped(serviceDate, 1);
-      upcomingServiceDates = [nextServiceDate];
+      // 12 services in 12-month cycle: Service 1 = serviceDate, Services 2-12 = +1m .. +11m (11 future dates)
+      upcomingServiceDates = buildMonthlyCycleFutureDates(serviceDate, 12, 1);
+      nextServiceDate = pickNextServiceDate(upcomingServiceDates, referenceDate);
       break;
     }
 
     case "Quarterly": {
-      // 4 quarters over 1 year: +3m, +6m, +9m, +12m
-      const q1 = addMonthsClamped(serviceDate, 3);
-      const q2 = addMonthsClamped(serviceDate, 6);
-      const q3 = addMonthsClamped(serviceDate, 9);
-      const q4 = addMonthsClamped(serviceDate, 12);
-      upcomingServiceDates = [q1, q2, q3, q4];
-
-      // Earliest date that is >= referenceDate; if all passed or none passed, earliest date in list
-      const upcoming = upcomingServiceDates.find(
-        (d) => d.getTime() >= referenceDate.getTime()
-      );
-      nextServiceDate = upcoming || upcomingServiceDates[0];
+      // 4 services in 12-month cycle: Service 1 = serviceDate, Services 2-4 = +3m, +6m, +9m (3 future dates)
+      upcomingServiceDates = buildMonthlyCycleFutureDates(serviceDate, 4, 3);
+      nextServiceDate = pickNextServiceDate(upcomingServiceDates, referenceDate);
       break;
     }
 
     case "Half-Yearly": {
-      // 2 services over 1 year: +6m, +12m
-      const h1 = addMonthsClamped(serviceDate, 6);
-      const h2 = addMonthsClamped(serviceDate, 12);
-      upcomingServiceDates = [h1, h2];
-
-      const upcoming = upcomingServiceDates.find(
-        (d) => d.getTime() >= referenceDate.getTime()
-      );
-      nextServiceDate = upcoming || upcomingServiceDates[0];
+      // 2 services in 12-month cycle: Service 1 = serviceDate, Service 2 = +6m (1 future date)
+      upcomingServiceDates = buildMonthlyCycleFutureDates(serviceDate, 2, 6);
+      nextServiceDate = pickNextServiceDate(upcomingServiceDates, referenceDate);
       break;
     }
 
     case "Yearly": {
-      // 1 service per year: +12m
-      const y1 = addMonthsClamped(serviceDate, 12);
-      upcomingServiceDates = [y1];
-      nextServiceDate = y1;
+      // 1 service in 12-month cycle: Service 1 = serviceDate (0 additional future dates in cycle)
+      upcomingServiceDates = [];
+      nextServiceDate = null;
       break;
     }
 
     case "Yearly 3 services":
     case "3 Services Yearly": {
-      // 3 occurrences within 1 year: +4m, +8m, +12m
-      const s1 = addMonthsClamped(serviceDate, 4);
-      const s2 = addMonthsClamped(serviceDate, 8);
-      const s3 = addMonthsClamped(serviceDate, 12);
-      upcomingServiceDates = [s1, s2, s3];
-
-      const upcoming = upcomingServiceDates.find(
-        (d) => d.getTime() >= referenceDate.getTime()
-      );
-      nextServiceDate = upcoming || upcomingServiceDates[0];
+      // 3 services in 12-month cycle: Service 1 = serviceDate, Services 2-3 = +4m, +8m (2 future dates)
+      upcomingServiceDates = buildMonthlyCycleFutureDates(serviceDate, 3, 4);
+      nextServiceDate = pickNextServiceDate(upcomingServiceDates, referenceDate);
       break;
     }
 
@@ -246,15 +290,11 @@ export const calculateServiceDates = (
       }
 
       upcomingServiceDates = dates;
-      const upcoming = upcomingServiceDates.find(
-        (d) => d.getTime() >= referenceDate.getTime()
-      );
-      nextServiceDate = upcoming || (upcomingServiceDates.length > 0 ? upcomingServiceDates[0] : null);
+      nextServiceDate = pickNextServiceDate(upcomingServiceDates, referenceDate);
       break;
     }
 
     default: {
-      // Fallback: keep existing nextServiceDate if unknown frequency
       upcomingServiceDates = [];
       nextServiceDate = null;
       break;

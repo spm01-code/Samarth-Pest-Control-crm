@@ -60,6 +60,12 @@ const quotationSchema = new mongoose.Schema(
           required: true,
         },
 
+        paymentBasis: {
+          type: String,
+          enum: ["per-service", "per-month", "per-year"],
+          required: false,
+        },
+
         location: {
           type: String,
           trim: true,
@@ -110,6 +116,11 @@ const quotationSchema = new mongoose.Schema(
         serviceCharges: {
           type: String,
           default: "",
+        },
+        paymentBasis: {
+          type: String,
+          enum: ["per-service", "per-month", "per-year"],
+          required: false,
         },
       },
     ],

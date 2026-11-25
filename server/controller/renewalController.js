@@ -5,6 +5,7 @@ import Customer from "../model/customerModel.js";
 import { generateContractRenewalDocx } from "../utils/docGenerator.js";
 import { convertDocxToPdf } from "../utils/docxToPdf.js";
 import { generateDocumentNumber } from "../utils/documentNumberService.js";
+import { sanitizeItemsPaymentBasis } from "../utils/paymentBasisHelper.js";
 
 const populateRenewal = (query) => {
   return query.populate("customer");
@@ -159,7 +160,16 @@ export const createRenewal = async (req, res) => {
       });
     }
 
-    const subtotal = services.reduce((sum, service) => sum + Number(service.amount || 0), 0);
+    const sanitizedServices = sanitizeItemsPaymentBasis(services);
+    if (!sanitizedServices.valid) {
+      return res.status(400).json({
+        success: false,
+        message: sanitizedServices.error,
+      });
+    }
+    const normalizedServices = sanitizedServices.items;
+
+    const subtotal = normalizedServices.reduce((sum, service) => sum + Number(service.amount || 0), 0);
     const totalAmount = subtotal;
 
     let renewalDoc;
@@ -188,7 +198,7 @@ export const createRenewal = async (req, res) => {
             contactPerson: customer.contactPerson || "",
             snapshotTakenAt: new Date(),
           },
-          services,
+          services: normalizedServices,
           contractStartDate,
           contractEndDate,
           contractPeriod: customContractPeriod || defaultContractPeriod,
@@ -260,6 +270,14 @@ export const updateRenewal = async (req, res) => {
           message: "At least one service is required",
         });
       }
+      const sanitizedServices = sanitizeItemsPaymentBasis(updateData.services);
+      if (!sanitizedServices.valid) {
+        return res.status(400).json({
+          success: false,
+          message: sanitizedServices.error,
+        });
+      }
+      updateData.services = sanitizedServices.items;
       const subtotal = updateData.services.reduce((sum, s) => sum + Number(s.amount || 0), 0);
       updateData.subtotal = subtotal;
       updateData.totalAmount = subtotal;

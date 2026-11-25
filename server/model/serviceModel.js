@@ -204,6 +204,12 @@ const serviceSchema = new mongoose.Schema(
       required: true,
     },
 
+    paymentBasis: {
+      type: String,
+      enum: ["per-service", "per-month", "per-year"],
+      required: false,
+    },
+
     totalAmount: {
       type: Number,
       default: 0,

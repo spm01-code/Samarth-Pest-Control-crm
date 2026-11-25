@@ -28,6 +28,7 @@ import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateOnly as formatDate, formatTimestamp } from "../utils/dateUtils";
 import usePermission from "../hooks/usePermission";
+import { formatPaymentBasis } from "../utils/paymentBasis";
 
 function ServiceDetails() {
   const { id } = useParams();
@@ -157,6 +158,11 @@ function ServiceDetails() {
   }
 
   const isOneTime = isOneTimeJobService(service);
+  const effectiveNextServiceDate = isOneTime
+    ? null
+    : service.serviceDate && service.frequency
+      ? calculateServiceDates(service.serviceDate, service.frequency).nextServiceDate
+      : service.nextServiceDate || null;
   const totalAmount = Number(service.totalAmount ?? service.amount ?? 0);
   const paidAmount = Number(service.paidAmount ?? 0);
   const balanceAmount = Number(
@@ -321,6 +327,9 @@ function ServiceDetails() {
             {isOneTime ? "Total Job Value" : "Contract Value"}
           </p>
           <h3 className="text-2xl font-bold mt-2">₹{totalAmount}</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            {formatPaymentBasis(service.paymentBasis)}
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl p-5 shadow-sm">
@@ -348,8 +357,11 @@ function ServiceDetails() {
           <div className="bg-white rounded-2xl p-5 shadow-sm">
             <p className="text-gray-500 text-sm">Next Service</p>
             <h3 className="text-lg font-semibold mt-2">
-              {formatDate(service.nextServiceDate, "N/A")}
+              {formatDate(effectiveNextServiceDate, "No Upcoming Service")}
             </h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Auto-calculated from schedule
+            </p>
           </div>
         )}
       </div>
@@ -718,6 +730,11 @@ function ServiceDetails() {
           </div>
 
           <div>
+            <p className="text-sm text-gray-500">Payment Basis</p>
+            <p className="font-medium">{formatPaymentBasis(service.paymentBasis)}</p>
+          </div>
+
+          <div>
             <p className="text-sm text-gray-500">Status</p>
             <p className="font-medium capitalize">{service.status}</p>
           </div>
@@ -727,17 +744,24 @@ function ServiceDetails() {
       {/* Upcoming Service Dates for multi-date frequencies */}
       {isMultiDateFrequency(service.frequency) && (
         <div className="bg-white rounded-3xl p-6 shadow-sm mb-6">
-          <h2 className="text-xl font-semibold mb-4">Upcoming Service Dates</h2>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <h2 className="text-xl font-semibold">Upcoming Service Dates</h2>
+            {service.serviceDate && (
+              <span className="text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-full">
+                Service 1 (Initial): {formatDate(service.serviceDate)}
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {(Array.isArray(service.upcomingServiceDates) &&
             service.upcomingServiceDates.length > 0
               ? service.upcomingServiceDates
               : calculateServiceDates(service.serviceDate, service.frequency).upcomingServiceDates
             ).map((d, index) => {
-              const dateObj = new Date(d);
+              const formattedUpcoming = formatDate(d);
               const isNext =
-                service.nextServiceDate &&
-                new Date(service.nextServiceDate).toDateString() === dateObj.toDateString();
+                Boolean(effectiveNextServiceDate) &&
+                formatDate(effectiveNextServiceDate) === formattedUpcoming;
               return (
                 <div
                   key={index}
@@ -747,8 +771,8 @@ function ServiceDetails() {
                       : "border-slate-200 bg-slate-50 text-slate-700"
                   }`}
                 >
-                  <p className="text-xs text-slate-500">Service {index + 1}</p>
-                  <p className="mt-1 text-sm">{formatDate(dateObj)}</p>
+                  <p className="text-xs text-slate-500">Service {index + 2}</p>
+                  <p className="mt-1 text-sm">{formattedUpcoming}</p>
                   {isNext && (
                     <span className="inline-block mt-1 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded-full">
                       Next Due

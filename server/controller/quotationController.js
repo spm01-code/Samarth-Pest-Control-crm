@@ -6,6 +6,7 @@ import CompanySetting from "../model/companySettingModel.js";
 import { generateQuotationDocx as generateQuotationDocxFile } from "../utils/docGenerator.js";
 import { convertDocxToPdf } from "../utils/docxToPdf.js";
 import { generateDocumentNumber } from "../utils/documentNumberService.js";
+import { sanitizeItemsPaymentBasis } from "../utils/paymentBasisHelper.js";
 
 // ============================================================
 // HELPER
@@ -39,6 +40,28 @@ export const createQuotation = async (req, res) => {
 
     let customerSnapshot = undefined;
     const bodyCopy = { ...req.body };
+
+    if (Array.isArray(bodyCopy.services)) {
+      const sanitizedServices = sanitizeItemsPaymentBasis(bodyCopy.services);
+      if (!sanitizedServices.valid) {
+        return res.status(400).json({
+          success: false,
+          message: sanitizedServices.error,
+        });
+      }
+      bodyCopy.services = sanitizedServices.items;
+    }
+
+    if (Array.isArray(bodyCopy.treatments)) {
+      const sanitizedTreatments = sanitizeItemsPaymentBasis(bodyCopy.treatments);
+      if (!sanitizedTreatments.valid) {
+        return res.status(400).json({
+          success: false,
+          message: sanitizedTreatments.error,
+        });
+      }
+      bodyCopy.treatments = sanitizedTreatments.items;
+    }
 
     if (bodyCopy.customer && mongoose.Types.ObjectId.isValid(bodyCopy.customer)) {
       const cust = await Customer.findById(bodyCopy.customer).lean();
@@ -244,6 +267,26 @@ export const getCustomerQuotations = async (req, res) => {
 export const updateQuotation = async (req, res) => {
   try {
     const updateData = { ...req.body };
+    if (Array.isArray(updateData.services)) {
+      const sanitizedServices = sanitizeItemsPaymentBasis(updateData.services);
+      if (!sanitizedServices.valid) {
+        return res.status(400).json({
+          success: false,
+          message: sanitizedServices.error,
+        });
+      }
+      updateData.services = sanitizedServices.items;
+    }
+    if (Array.isArray(updateData.treatments)) {
+      const sanitizedTreatments = sanitizeItemsPaymentBasis(updateData.treatments);
+      if (!sanitizedTreatments.valid) {
+        return res.status(400).json({
+          success: false,
+          message: sanitizedTreatments.error,
+        });
+      }
+      updateData.treatments = sanitizedTreatments.items;
+    }
     if (
       (updateData.totalAmount === undefined || updateData.totalAmount === null || updateData.totalAmount === "") &&
       Array.isArray(updateData.services)

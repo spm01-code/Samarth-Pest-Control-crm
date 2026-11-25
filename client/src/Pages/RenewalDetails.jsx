@@ -10,6 +10,7 @@ import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
 import usePermission from "../hooks/usePermission";
+import { formatPaymentBasis } from "../utils/paymentBasis";
 
 function RenewalDetails() {
   const { id } = useParams();
@@ -192,6 +193,7 @@ function RenewalDetails() {
                   <th className="p-4 font-medium">Frequency</th>
                   <th className="p-4 font-medium">Location</th>
                   <th className="p-4 text-right font-medium">Cost</th>
+                  <th className="p-4 font-medium">Payment Basis</th>
                 </tr>
               </thead>
               <tbody>
@@ -204,6 +206,9 @@ function RenewalDetails() {
                     <td className="p-4 text-right font-medium">
                       ₹{formatAmount(service.amount)}
                     </td>
+                    <td className="p-4 text-sm text-slate-600">
+                      {formatPaymentBasis(service.paymentBasis)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -215,6 +220,7 @@ function RenewalDetails() {
                   <td className="p-4 text-right text-lg font-bold">
                     ₹{formatAmount(renewal.totalAmount)}
                   </td>
+                  <td className="p-4" />
                 </tr>
               </tfoot>
             </table>

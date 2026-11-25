@@ -37,6 +37,11 @@ const renewalSchema = new mongoose.Schema(
           type: Number,
           required: true,
         },
+        paymentBasis: {
+          type: String,
+          enum: ["per-service", "per-month", "per-year"],
+          required: false,
+        },
         desc: {
           type: String,
         },

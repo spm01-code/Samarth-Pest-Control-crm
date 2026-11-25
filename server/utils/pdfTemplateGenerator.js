@@ -22,6 +22,7 @@ import {
   sanitizePdfText,
   PdfTemplateValidationError,
 } from "./pdfTemplateInspector.js";
+import { formatPaymentBasisLabel } from "./paymentBasisHelper.js";
 
 // ============================================================
 // TEXT WRAPPING & MEASUREMENT UTILITIES (FEATURE 2)
@@ -564,9 +565,9 @@ export async function generateQuotationPdf(
     ? wrapTextByFontMetrics(premisesText, premValueWidth, fontBold, 9.5)
     : [""];
   const origPremH = pb.topY - pb.bottomY;
-  const neededPremH = Math.max(origPremH, premLines.length * 11.5 + 12);
+  const neededPremH = Math.max(23, premLines.length * 11.5 + 10);
   const effPremBottomY = pb.topY - neededPremH;
-  const premShiftDown = Math.max(0, pb.bottomY - effPremBottomY);
+  const premDeltaY = effPremBottomY - pb.bottomY;
 
   // Clear old green cell area (+2pt margin) so double borders never remain
   page1.drawRectangle({
@@ -626,8 +627,8 @@ export async function generateQuotationPdf(
   // ------------------------------------------------------------
   const tbl = layout.table;
   const colX = tbl.colX;
-  const headerH = tbl.headerTopY - tbl.headerBottomY;
-  const effHeaderTopY = tbl.headerTopY - premShiftDown;
+  const headerH = Math.min(24, tbl.headerTopY - tbl.headerBottomY);
+  const effHeaderTopY = tbl.headerTopY + premDeltaY;
   const effHeaderBottomY = effHeaderTopY - headerH;
 
   const drawProposalTableHeader = (targetPage, hTop, hBottom) => {
@@ -680,6 +681,7 @@ export async function generateQuotationPdf(
   const locWidth = colX[2] - colX[1] - 12;
   const nameWidth = colX[3] - colX[2] - 12;
   const freqWidth = colX[4] - colX[3] - 10;
+  const costWidth = colX[5] - colX[4] - 12;
 
   const serviceRows = services.map((service, index) => {
     const numStr = sanitizePdfText(String(service.serviceNumber || index + 1));
@@ -693,25 +695,40 @@ export async function generateQuotationPdf(
           ? String(service.cost)
           : "0.00";
     const cost = sanitizePdfText(costRaw);
+    const paymentBasisLabel = sanitizePdfText(
+      formatPaymentBasisLabel(service.paymentBasis, "")
+    ).trim();
+
+    let costLines;
+    if (paymentBasisLabel) {
+      const combinedCost = `${cost} ${paymentBasisLabel}`;
+      if (fontRegular.widthOfTextAtSize(combinedCost, 9.0) <= costWidth) {
+        costLines = [combinedCost];
+      } else {
+        costLines = [cost, paymentBasisLabel];
+      }
+    } else {
+      costLines = [cost];
+    }
 
     const locLines = wrapTextByFontMetrics(location, locWidth, fontRegular, 9);
     const nameLines = wrapTextByFontMetrics(name, nameWidth, fontRegular, 9);
     const freqLines = wrapTextByFontMetrics(freq, freqWidth, fontRegular, 8.8);
-    const maxLines = Math.max(locLines.length, nameLines.length, freqLines.length, 1);
-    const rowHeight = Math.max(26, maxLines * 11.5 + 11);
+    const maxLines = Math.max(locLines.length, nameLines.length, freqLines.length, costLines.length, 1);
+    const rowHeight = Math.max(21, maxLines * 11.5 + 9);
     return {
       numStr,
       locLines,
       nameLines,
       freqLines,
-      cost,
+      costLines,
       rowHeight,
     };
   });
 
   const drawProposalServiceRow = (targetPage, row, rowTopY) => {
     const rowBottomY = rowTopY - row.rowHeight;
-    const midY = rowBottomY + row.rowHeight / 2 - 3.5;
+    const midY = rowBottomY + row.rowHeight / 2 - 3.2;
 
     drawCenteredText(targetPage, row.numStr, colX[0], colX[1], midY, 9.5, fontBold, black);
 
@@ -719,7 +736,7 @@ export async function generateQuotationPdf(
       if (line) {
         targetPage.drawText(line, {
           x: colX[1] + 6,
-          y: rowTopY - 13 - lIdx * 11.5,
+          y: row.locLines.length === 1 && row.rowHeight <= 23 ? midY : rowTopY - 12 - lIdx * 11.5,
           size: 9,
           font: fontRegular,
           color: black,
@@ -731,7 +748,7 @@ export async function generateQuotationPdf(
       if (line) {
         targetPage.drawText(line, {
           x: colX[2] + 6,
-          y: rowTopY - 13 - nIdx * 11.5,
+          y: row.nameLines.length === 1 && row.rowHeight <= 23 ? midY : rowTopY - 12 - nIdx * 11.5,
           size: 9,
           font: fontRegular,
           color: black,
@@ -739,7 +756,7 @@ export async function generateQuotationPdf(
       }
     });
 
-    const freqStartY = row.freqLines.length > 1 ? rowTopY - 13 : midY;
+    const freqStartY = row.freqLines.length > 1 ? rowTopY - 12 : midY;
     row.freqLines.forEach((line, fIdx) => {
       if (line) {
         drawCenteredText(
@@ -755,7 +772,12 @@ export async function generateQuotationPdf(
       }
     });
 
-    drawRightAlignedText(targetPage, row.cost, colX[5] - 8, midY, 9.2, fontRegular, black);
+    if (row.costLines.length <= 1) {
+      drawRightAlignedText(targetPage, row.costLines[0] || "", colX[5] - 8, midY, 9.2, fontRegular, black);
+    } else {
+      drawRightAlignedText(targetPage, row.costLines[0], colX[5] - 8, rowTopY - 12, 9.2, fontRegular, black);
+      drawRightAlignedText(targetPage, row.costLines[1], colX[5] - 8, rowTopY - 23.5, 8.2, fontRegular, black);
+    }
 
     drawHBorder(targetPage, colX[0], colX[5], rowBottomY, borderW, black);
     for (const vx of colX) {
@@ -767,7 +789,7 @@ export async function generateQuotationPdf(
   // ------------------------------------------------------------
   // 5. Measure Dynamic Footer (Terms + Closing + Signature + Stamp)
   // ------------------------------------------------------------
-  const totalRowHeight = 26.5;
+  const totalRowHeight = 22;
   const totalAmountStr = sanitizePdfText(
     data.totalAmount || data.grandTotal || data.total || "0.00"
   );
@@ -2443,6 +2465,7 @@ export async function generateContractRenewalPdf(
   const locMaxW = colX[2] - colX[1] - 12;
   const nameMaxW = colX[3] - colX[2] - 12;
   const freqMaxW = colX[4] - colX[3] - 10;
+  const costMaxW = colX[5] - colX[4] - 14;
 
   const measuredRows = services.map((srv, idx) => {
     const sNum = sanitizePdfText(String(srv.serviceNumber || idx + 1));
@@ -2454,14 +2477,29 @@ export async function generateContractRenewalPdf(
     const costStr = Number.isFinite(costNum)
       ? costNum.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       : sanitizePdfText(String(rawCost));
+    const paymentBasisLabel = sanitizePdfText(
+      formatPaymentBasisLabel(srv.paymentBasis, "")
+    ).trim();
+
+    let costLines;
+    if (paymentBasisLabel) {
+      const combinedCost = `${costStr} ${paymentBasisLabel}`;
+      if (fontRegular.widthOfTextAtSize(combinedCost, 8.6) <= costMaxW) {
+        costLines = [combinedCost];
+      } else {
+        costLines = [costStr, paymentBasisLabel];
+      }
+    } else {
+      costLines = [costStr];
+    }
 
     const locLines = wrapTextByFontMetrics(loc, locMaxW, fontRegular, 8.4);
     const nameLines = wrapTextByFontMetrics(name, nameMaxW, fontRegular, 8.4);
     const freqLines = wrapTextByFontMetrics(freq, freqMaxW, fontRegular, 8.4);
-    const maxLines = Math.max(locLines.length, nameLines.length, freqLines.length, 1);
+    const maxLines = Math.max(locLines.length, nameLines.length, freqLines.length, costLines.length, 1);
     const rowHeight = Math.max(24, maxLines * 10.5 + 10);
 
-    return { sNum, locLines, nameLines, freqLines, costStr, rowHeight };
+    return { sNum, locLines, nameLines, freqLines, costLines, rowHeight };
   });
 
   // Clean AMOUNT IN WORDS (deduplicate any leading "Rupees" / trailing "Only")
@@ -2584,7 +2622,12 @@ export async function generateContractRenewalPdf(
       }
     });
 
-    drawRightAlignedText(targetPage, row.costStr, colX[5] - 8, midY, 8.6, fontRegular, black);
+    if (row.costLines.length <= 1) {
+      drawRightAlignedText(targetPage, row.costLines[0] || "", colX[5] - 8, midY, 8.6, fontRegular, black);
+    } else {
+      drawRightAlignedText(targetPage, row.costLines[0], colX[5] - 8, rowTopY - 12, 8.6, fontRegular, black);
+      drawRightAlignedText(targetPage, row.costLines[1], colX[5] - 8, rowTopY - 22.5, 7.8, fontRegular, black);
+    }
 
     drawHBorder(targetPage, colX[0], colX[5], rowBottomY, borderW, black);
     for (const vx of colX) {
@@ -3155,6 +3198,13 @@ export async function generateOneTimeJobPdf(
       ? rawCharges
       : `Rs. ${rawCharges} /--`
     : "";
+  const otjBasisLabel = sanitizePdfText(
+    formatPaymentBasisLabel(data.paymentBasis, "")
+  ).trim();
+  const formattedChargesWithBasis =
+    formattedCharges && otjBasisLabel
+      ? `${formattedCharges} ${otjBasisLabel}`
+      : formattedCharges;
 
   const descValX = splitX + 6;
   const descValMaxX = rightX - 6;
@@ -3185,7 +3235,7 @@ export async function generateOneTimeJobPdf(
     },
     {
       key: "serviceCharges",
-      value: formattedCharges,
+      value: formattedChargesWithBasis,
       boldVal: true,
     },
   ].map((spec) => {
@@ -4016,7 +4066,12 @@ export async function generateAttQuotationPdf(
     );
     const tWarranty = sanitizePdfText(t.warrantyPeriod || "10 Years");
     const tChem = sanitizePdfText(t.chemicalUsed || "Imidacloprid 30.5 % SC");
-    const tCharges = sanitizePdfText(t.serviceCharges || "As agreed");
+    const rawTCharges = sanitizePdfText(t.serviceCharges || "As agreed");
+    const tBasis = sanitizePdfText(formatPaymentBasisLabel(t.paymentBasis, "")).trim();
+    const tCharges =
+      tBasis && !rawTCharges.toLowerCase().includes(tBasis.toLowerCase())
+        ? `${rawTCharges} ${tBasis}`
+        : rawTCharges;
 
     const typeLines = wrapTextByFontMetrics(
       tType,
@@ -4050,8 +4105,8 @@ export async function generateAttQuotationPdf(
       chemLines.length,
       chargeLines.length
     );
-    const minRowH = rawTreatments.length === 1 ? Math.max(36, origTrBodyH) : 32;
-    const effH = Math.max(minRowH, maxLines * trLineSpacing + 14);
+    const minRowH = 24;
+    const effH = Math.max(minRowH, maxLines * trLineSpacing + 10);
     return {
       effH,
       typeLines,

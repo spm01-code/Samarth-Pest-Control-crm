@@ -4,13 +4,13 @@ import { useDispatch, useSelector } from "react-redux";
 import { createService } from "../slices/serviceSlice";
 import {
   calculateServiceDates,
-  formatDateForInput,
   isMultiDateFrequency,
 } from "../utils/serviceDateCalculator";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
 import { useScrollLock } from "../hooks/useScrollLock";
+import { PAYMENT_BASIS_OPTIONS } from "../utils/paymentBasis";
 
 function CreateServiceModal({
   onClose,
@@ -41,10 +41,10 @@ function CreateServiceModal({
     desc: "",
     frequency: initialFrequency || "monthly",
     serviceDate: "",
-    nextServiceDate: "",
     upcomingServiceDates: [],
     address: initialCustomer?.address || "",
     amount: "",
+    paymentBasis: "",
     status: "pending",
     area: "",
     locationOfPest: "",
@@ -70,11 +70,10 @@ function CreateServiceModal({
 
     if (name === "serviceDate" || name === "frequency") {
       if (updated.serviceDate && updated.frequency) {
-        const { nextServiceDate, upcomingServiceDates } = calculateServiceDates(
+        const { upcomingServiceDates } = calculateServiceDates(
           updated.serviceDate,
           updated.frequency
         );
-        updated.nextServiceDate = formatDateForInput(nextServiceDate);
         updated.upcomingServiceDates = upcomingServiceDates;
       }
     }
@@ -86,6 +85,9 @@ function CreateServiceModal({
     e.preventDefault();
 
     const payload = { ...formData };
+    if (!payload.paymentBasis) {
+      delete payload.paymentBasis;
+    }
 
     if (payload.frequency === "one-time") {
       const finalCustomerName = (formData.customerName || customerSearch || "").trim();
@@ -464,7 +466,9 @@ function CreateServiceModal({
               <option value="monthly">Monthly</option>
               <option value="Fourth nightly">Fourth nightly</option>
               <option value="Quarterly">Quarterly</option>
+              <option value="Half-Yearly">Half-Yearly</option>
               <option value="Yearly 3 services">Yearly 3 services</option>
+              <option value="Yearly">Yearly</option>
             </select>
           </div>
 
@@ -482,7 +486,7 @@ function CreateServiceModal({
 
           {/* Dates & Time */}
           <div className="grid md:grid-cols-2 gap-4">
-            <div>
+            <div className={formData.frequency === "one-time" ? "" : "md:col-span-2"}>
               <label className="block mb-2 font-medium">Service Date</label>
               <input
                 type="date"
@@ -494,7 +498,7 @@ function CreateServiceModal({
               />
             </div>
 
-            {formData.frequency === "one-time" ? (
+            {formData.frequency === "one-time" && (
               <div>
                 <label className="block mb-2 font-medium">Service Time</label>
                 <input
@@ -506,19 +510,6 @@ function CreateServiceModal({
                   className="w-full border rounded-xl p-3"
                 />
               </div>
-            ) : (
-              <div>
-                <label className="block mb-2 font-medium">
-                  Next Service Date
-                </label>
-                <input
-                  type="date"
-                  name="nextServiceDate"
-                  value={formData.nextServiceDate}
-                  onChange={handleChange}
-                  className="w-full border rounded-xl p-3"
-                />
-              </div>
             )}
 
             {isMultiDateFrequency(formData.frequency) &&
@@ -526,7 +517,8 @@ function CreateServiceModal({
                 <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
                   <p className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">
                     Calculated Upcoming Service Dates (
-                    {formData.upcomingServiceDates.length})
+                    {formData.upcomingServiceDates.length}) — Service 1 (Initial):{" "}
+                    {formatDate(formData.serviceDate)}
                   </p>
                   <div className="flex flex-wrap gap-2 max-h-28 overflow-y-auto">
                     {formData.upcomingServiceDates.map((d, i) => (
@@ -534,7 +526,7 @@ function CreateServiceModal({
                         key={i}
                         className="bg-white border border-slate-300 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-700 shadow-xs"
                       >
-                        {formatDate(d)}
+                        Service {i + 2}: {formatDate(d)}
                       </span>
                     ))}
                   </div>
@@ -610,17 +602,36 @@ function CreateServiceModal({
             />
           </div>
 
-          {/* Amount */}
-          <div>
-            <label className="block mb-2 font-medium">Amount</label>
-            <input
-              type="number"
-              name="amount"
-              value={formData.amount}
-              onChange={handleChange}
-              className="w-full border rounded-xl p-3"
-              required
-            />
+          {/* Amount & Payment Basis */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <div>
+              <label className="block mb-2 font-medium">Amount</label>
+              <input
+                type="number"
+                name="amount"
+                value={formData.amount}
+                onChange={handleChange}
+                className="w-full border rounded-xl p-3"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block mb-2 font-medium">Payment Basis</label>
+              <select
+                name="paymentBasis"
+                value={formData.paymentBasis}
+                onChange={handleChange}
+                className="w-full border rounded-xl p-3 bg-white"
+              >
+                <option value="">Select Payment Basis</option>
+                {PAYMENT_BASIS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Status */}

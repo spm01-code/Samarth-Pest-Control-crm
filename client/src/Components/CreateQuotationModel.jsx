@@ -11,6 +11,7 @@ import { fetchCompanySettingsAPI } from "../API/companySettingAPI";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { useScrollLock } from "../hooks/useScrollLock";
+import { PAYMENT_BASIS_OPTIONS } from "../utils/paymentBasis";
 
 const today = () => new Date().toLocaleDateString("en-CA");
 
@@ -25,6 +26,7 @@ const emptyService = () => ({
   serviceName: "",
   frequency: "",
   cost: "",
+  paymentBasis: "",
   location: "",
 });
 
@@ -33,6 +35,7 @@ const emptyTreatment = () => ({
   warrantyPeriod: "10 Years",
   chemicalUsed: "",
   serviceCharges: "",
+  paymentBasis: "",
 });
 
 const getInitialFormData = (
@@ -113,6 +116,7 @@ const getInitialFormData = (
               serviceName: s.serviceName || "",
               frequency: s.frequency || "",
               cost: s.cost ?? "",
+              paymentBasis: s.paymentBasis || "",
               location: s.location || "",
             }))
           : [emptyService()],
@@ -142,6 +146,7 @@ const getInitialFormData = (
               warrantyPeriod: t.warrantyPeriod || "10 Years",
               chemicalUsed: t.chemicalUsed || "",
               serviceCharges: t.serviceCharges || "",
+              paymentBasis: t.paymentBasis || "",
             }))
           : [emptyTreatment()],
     };
@@ -417,6 +422,7 @@ function CreateQuotationModal({
         : formData.services.map((service) => ({
             ...service,
             cost: Number(service.cost),
+            paymentBasis: service.paymentBasis || undefined,
             location: service.location || "",
           })),
       treatments: isAtt
@@ -426,6 +432,7 @@ function CreateQuotationModal({
             warrantyPeriod: t.warrantyPeriod || "",
             chemicalUsed: t.chemicalUsed || "",
             serviceCharges: t.serviceCharges || "",
+            paymentBasis: t.paymentBasis || undefined,
           }))
         : [],
     };
@@ -904,7 +911,7 @@ function CreateQuotationModal({
                 {formData.treatments.map((treatment, index) => (
                   <div
                     key={index}
-                    className="grid gap-3 rounded-lg border p-4 bg-slate-50/50 md:grid-cols-[1.5fr_1fr_1.5fr_1fr_auto]"
+                    className="grid gap-3 rounded-lg border p-4 bg-slate-50/50 md:grid-cols-[1.4fr_0.9fr_1.4fr_1fr_1fr_auto]"
                   >
                     <div>
                       <label className="mb-1 block text-xs font-medium text-gray-600">
@@ -974,6 +981,27 @@ function CreateQuotationModal({
                       />
                     </div>
 
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">
+                        Payment Basis
+                      </label>
+                      <select
+                        name="paymentBasis"
+                        value={treatment.paymentBasis || ""}
+                        onChange={(event) =>
+                          handleTreatmentChange(index, event)
+                        }
+                        className="w-full rounded-lg border p-2 bg-white text-sm"
+                      >
+                        <option value="">Not Specified</option>
+                        {PAYMENT_BASIS_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <button
                       type="button"
                       onClick={() => removeTreatment(index)}
@@ -1004,7 +1032,7 @@ function CreateQuotationModal({
                 {formData.services.map((service, index) => (
                   <div
                     key={index}
-                    className="grid gap-3 rounded-lg border p-4 md:grid-cols-[1.5fr_1.5fr_1fr_1fr_auto]"
+                    className="grid gap-3 rounded-lg border p-4 md:grid-cols-[1.4fr_1.4fr_1fr_0.9fr_1fr_auto]"
                   >
                     <div>
                       <label className="mb-1 block text-sm text-gray-600">
@@ -1071,6 +1099,27 @@ function CreateQuotationModal({
                         step="0.01"
                         required
                       />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm text-gray-600">
+                        Payment Basis
+                      </label>
+                      <select
+                        name="paymentBasis"
+                        value={service.paymentBasis || ""}
+                        onChange={(event) =>
+                          handleServiceChange(index, event)
+                        }
+                        className="w-full rounded-lg border p-2 bg-white"
+                      >
+                        <option value="">Select Basis</option>
+                        {PAYMENT_BASIS_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <button

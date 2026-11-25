@@ -7,6 +7,7 @@ import Docxtemplater from "docxtemplater";
 import DocumentTemplate from "../model/documentTemplateModel.js";
 import CompanySetting from "../model/companySettingModel.js";
 import { generatePdfFromPdfTemplate } from "./pdfTemplateGenerator.js";
+import { formatPaymentBasisLabel } from "./paymentBasisHelper.js";
 
 // ============================================================
 // HELPERS
@@ -710,20 +711,239 @@ const loadDocxTemplate = (filePath) => {
   });
 };
 
+const TABLE_SPACING_NORMALIZED_TYPES = new Set([
+  "quotation",
+  "att-quotation",
+  "contract-renewal",
+]);
+
+function isEmptyTableParagraph(pXml) {
+  if (
+    /<w:(?:drawing|pict|br|sym|object|fldChar|instrText)\b/i.test(pXml) ||
+    /<mc:AlternateContent\b/i.test(pXml)
+  ) {
+    return false;
+  }
+  const texts = [...pXml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/gi)]
+    .map((m) => m[1])
+    .join("");
+  return texts.replace(/\s+/g, "").length === 0;
+}
+
+function insertInOrder(containerXml, closeTag, newElementXml, beforeTags) {
+  for (const tag of beforeTags) {
+    const idx = containerXml.search(new RegExp(`<${tag}(?:\\b|/|>)`, "i"));
+    if (idx !== -1) {
+      return containerXml.slice(0, idx) + newElementXml + containerXml.slice(idx);
+    }
+  }
+  return containerXml.replace(closeTag, `${newElementXml}${closeTag}`);
+}
+
+function upsertParagraphSpacingAndIndent(pXml, { cleanLeadingSpaces = false } = {}) {
+  let p = pXml;
+
+  let isTotalAmountHack = false;
+  if (cleanLeadingSpaces && /TOTAL AMOUNT/i.test(p)) {
+    const replaced = p.replace(/(<w:t\b[^>]*>)\s{4,}(TOTAL AMOUNT)\s*(<\/w:t>)/gi, "$1$2$3");
+    if (replaced !== p) {
+      p = replaced;
+      isTotalAmountHack = true;
+    }
+  }
+
+  // Trim trailing padding spaces in table cell text runs
+  p = p.replace(/(<w:t\b[^>]*>)([^<]*?)\s{2,}(<\/w:t>)/g, "$1$2$3");
+
+  const updatePPr = (pPrXml) => {
+    const splitAtRPr = (xml) => {
+      const idx = xml.search(/<w:rPr(?:\b|\/|>)/i);
+      return idx !== -1
+        ? [xml.slice(0, idx), xml.slice(idx)]
+        : [xml.replace(/<\/w:pPr>$/i, ""), "</w:pPr>"];
+    };
+
+    let [head, tail] = splitAtRPr(pPrXml);
+
+    const spacingMatch = head.match(/<w:spacing\b([^>]*?)\s*\/?>/i);
+    if (spacingMatch) {
+      let attrs = spacingMatch[1]
+        .replace(/\/\s*$/, "")
+        .replace(/\s*w:before="[^"]*"/gi, "")
+        .replace(/\s*w:after="[^"]*"/gi, "")
+        .trim();
+      const lineMatch = attrs.match(/w:line="(\d+)"/i);
+      if (lineMatch && parseInt(lineMatch[1], 10) > 260) {
+        attrs = attrs.replace(/w:line="\d+"/i, 'w:line="240"');
+      }
+      const attrSuffix = attrs ? ` ${attrs}` : "";
+      head = head.replace(spacingMatch[0], `<w:spacing w:before="0" w:after="0"${attrSuffix}/>`);
+    } else {
+      const defaultSpacing = `<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>`;
+      const combined = insertInOrder(head + tail, "</w:pPr>", defaultSpacing, [
+        "w:ind",
+        "w:contextualSpacing",
+        "w:mirrorIndents",
+        "w:suppressOverlap",
+        "w:jc",
+        "w:textDirection",
+        "w:textAlignment",
+        "w:textboxTightWrap",
+        "w:outlineLvl",
+        "w:divId",
+        "w:cnfStyle",
+        "w:rPr",
+      ]);
+      [head, tail] = splitAtRPr(combined);
+    }
+
+    if (isTotalAmountHack) {
+      if (!/<w:ind\b/i.test(head)) {
+        const combined = insertInOrder(head + tail, "</w:pPr>", `<w:ind w:right="300"/>`, [
+          "w:contextualSpacing",
+          "w:mirrorIndents",
+          "w:suppressOverlap",
+          "w:jc",
+          "w:textDirection",
+          "w:textAlignment",
+          "w:textboxTightWrap",
+          "w:outlineLvl",
+          "w:divId",
+          "w:cnfStyle",
+          "w:rPr",
+        ]);
+        [head, tail] = splitAtRPr(combined);
+      }
+      if (!/<w:jc\b/i.test(head)) {
+        const combined = insertInOrder(head + tail, "</w:pPr>", `<w:jc w:val="right"/>`, [
+          "w:textDirection",
+          "w:textAlignment",
+          "w:textboxTightWrap",
+          "w:outlineLvl",
+          "w:divId",
+          "w:cnfStyle",
+          "w:rPr",
+        ]);
+        [head, tail] = splitAtRPr(combined);
+      }
+    }
+
+    return head + tail;
+  };
+
+  if (/<w:pPr>[\s\S]*?<\/w:pPr>/i.test(p)) {
+    p = p.replace(/<w:pPr>[\s\S]*?<\/w:pPr>/i, updatePPr);
+  } else if (/<w:pPr\s*\/>/i.test(p)) {
+    p = p.replace(/<w:pPr\s*\/>/i, updatePPr("<w:pPr></w:pPr>"));
+  } else if (/^<w:p\b[^>]*\/>$/i.test(p)) {
+    p = p.replace(/^<w:p\b([^>]*)\/>$/i, `<w:p$1>${updatePPr("<w:pPr></w:pPr>")}</w:p>`);
+  } else {
+    p = p.replace(/<w:p(\s+[^>]*)?>/, (m) => `${m}${updatePPr("<w:pPr></w:pPr>")}`);
+  }
+
+  return p;
+}
+
+function normalizeCellMargins(tcPrXml) {
+  const targetTop = `<w:top w:w="50" w:type="dxa"/>`;
+  const targetBottom = `<w:bottom w:w="50" w:type="dxa"/>`;
+
+  const tcMarMatch = tcPrXml.match(/<w:tcMar\b[^>]*>([\s\S]*?)<\/w:tcMar>/i);
+  if (tcMarMatch) {
+    let inner = tcMarMatch[1]
+      .replace(/<w:top\b[^>]*\/?>/gi, "")
+      .replace(/<w:bottom\b[^>]*\/?>/gi, "");
+    return tcPrXml.replace(tcMarMatch[0], `<w:tcMar>${targetTop}${targetBottom}${inner}</w:tcMar>`);
+  }
+
+  const defaultTcMar = `<w:tcMar>${targetTop}<w:left w:w="108" w:type="dxa"/>${targetBottom}<w:right w:w="108" w:type="dxa"/></w:tcMar>`;
+  // Insert <w:tcMar> strictly in OOXML CT_TcPr schema order (before textDirection/tcFitText/vAlign/hideMark/headers)
+  return insertInOrder(tcPrXml, "</w:tcPr>", defaultTcMar, [
+    "w:textDirection",
+    "w:tcFitText",
+    "w:vAlign",
+    "w:hideMark",
+    "w:headers",
+  ]);
+}
+
+export function normalizeTableRowSpacingXml(xmlContent, documentType = "") {
+  if (!TABLE_SPACING_NORMALIZED_TYPES.has(documentType)) {
+    return xmlContent;
+  }
+
+  return xmlContent.replace(/<w:tbl\b[\s\S]*?<\/w:tbl>/g, (tblXml) => {
+    // Remove table-level excessive top/bottom cell margins if present
+    let updatedTbl = tblXml.replace(
+      /<w:tblCellMar\b[^>]*>[\s\S]*?<\/w:tblCellMar>/i,
+      (tblMar) => {
+        const inner = tblMar
+          .replace(/^<w:tblCellMar\b[^>]*>/i, "")
+          .replace(/<\/w:tblCellMar>$/i, "")
+          .replace(/<w:top\b[^>]*\/?>/gi, "")
+          .replace(/<w:bottom\b[^>]*\/?>/gi, "");
+        return `<w:tblCellMar><w:top w:w="50" w:type="dxa"/><w:bottom w:w="50" w:type="dxa"/>${inner}</w:tblCellMar>`;
+      }
+    );
+
+    updatedTbl = updatedTbl.replace(/<w:tr\b[\s\S]*?<\/w:tr>/g, (trXml) => {
+      // Remove fixed/minimum row height constraints so rows adapt naturally to content
+      let updatedTr = trXml.replace(/<w:trHeight\b[^>]*\/?>/gi, "");
+      updatedTr = updatedTr.replace(/<w:trPr>\s*<\/w:trPr>/gi, "");
+
+      updatedTr = updatedTr.replace(/<w:tc\b[\s\S]*?<\/w:tc>/g, (tcXml) => {
+        let updatedTc = tcXml;
+
+        // Normalize cell top/bottom margins while preserving widths, borders, and shading
+        if (updatedTc.includes("<w:tcPr>")) {
+          updatedTc = updatedTc.replace(/<w:tcPr>[\s\S]*?<\/w:tcPr>/i, (tcPr) =>
+            normalizeCellMargins(tcPr)
+          );
+        }
+
+        // Remove empty paragraphs inside cells (keeping at least one <w:p> per OOXML spec)
+        const paras = [...updatedTc.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)];
+        if (paras.length > 1) {
+          const nonEmptyParas = paras.filter((m) => !isEmptyTableParagraph(m[0]));
+          if (nonEmptyParas.length > 0) {
+            for (const m of paras) {
+              if (isEmptyTableParagraph(m[0])) {
+                updatedTc = updatedTc.replace(m[0], "");
+              }
+            }
+          }
+        }
+
+        // Normalize paragraph spacing and space-padded totals inside table cells
+        updatedTc = updatedTc.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (pXml) =>
+          upsertParagraphSpacingAndIndent(pXml, { cleanLeadingSpaces: true })
+        );
+
+        return updatedTc;
+      });
+
+      return updatedTr;
+    });
+
+    return updatedTbl;
+  });
+}
+
 /**
- * Generate DOCX buffer with post-render hanging indent.
+ * Generate DOCX buffer with post-render hanging indent and table row spacing normalization.
  */
-const generateBuffer = (doc) => {
+const generateBuffer = (doc, documentType = "") => {
   const zip = doc.getZip();
   try {
     const docFile = zip.file("word/document.xml");
     if (docFile) {
       let xml = docFile.asText();
       xml = applyHangingIndentToRenderedXml(xml);
+      xml = normalizeTableRowSpacingXml(xml, documentType);
       zip.file("word/document.xml", xml);
     }
   } catch (err) {
-    console.warn("Could not apply post-render hanging indent:", err.message);
+    console.warn("Could not apply post-render XML normalization:", err.message);
   }
 
   return zip.generate({
@@ -864,6 +1084,7 @@ const buildInvoiceServices = (invoice) => {
         serviceName: service?.serviceName || invoice?.treatmentType || "",
         description: service?.desc || "",
         amount: formatAmount(service?.amount),
+        paymentBasis: formatPaymentBasisLabel(service?.paymentBasis, ""),
         serviceDate: formatDate(service?.serviceDate),
         nextServiceDate: formatDate(service?.nextServiceDate),
         address,
@@ -923,6 +1144,7 @@ const buildInvoiceTreatments = (invoice) => {
       treatmentType: service?.serviceName || invoice?.treatmentType || "",
       description: service?.desc || "",
       amount: formatAmount(service?.amount),
+      paymentBasis: formatPaymentBasisLabel(service?.paymentBasis, ""),
       serviceDate: formatDate(service?.serviceDate),
       nextServiceDate: formatDate(service?.nextServiceDate),
       frequency: service?.frequency || "",
@@ -982,6 +1204,8 @@ const buildQuotationServices = (quotation) => {
     amount: formatAmount(
       firstValue(service?.amount, service?.serviceCost, service?.cost),
     ),
+
+    paymentBasis: formatPaymentBasisLabel(service?.paymentBasis, ""),
 
     description: firstValue(service?.desc, service?.description),
 
@@ -1095,6 +1319,8 @@ const buildRenewalServices = (renewal) => {
       price: formatAmount(amount),
 
       cost: formatAmount(amount),
+
+      paymentBasis: formatPaymentBasisLabel(service?.paymentBasis, ""),
 
       // ----------------------------------------------------
       // Additional Fields
@@ -1431,7 +1657,7 @@ export const generateInvoiceDocx = async (invoice) => {
     const doc = loadDocxTemplate(template.filePath);
     doc.render(data);
 
-    const buffer = generateBuffer(doc);
+    const buffer = generateBuffer(doc, documentType);
 
     return {
       buffer,
@@ -1486,6 +1712,7 @@ export const generateAttQuotationDocx = async (quotation) => {
           warrantyPeriod: t.warrantyPeriod || "",
           chemicalUsed: t.chemicalUsed || "",
           serviceCharges: t.serviceCharges || "",
+          paymentBasis: formatPaymentBasisLabel(t.paymentBasis, ""),
         }))
       : [];
 
@@ -1588,7 +1815,7 @@ export const generateAttQuotationDocx = async (quotation) => {
 
     const doc = loadDocxTemplate(template.filePath);
     doc.render(data);
-    const buffer = generateBuffer(doc);
+    const buffer = generateBuffer(doc, "att-quotation");
 
     return {
       buffer,
@@ -1753,7 +1980,7 @@ export const generateQuotationDocx = async (quotation) => {
 
     doc.render(data);
 
-    const buffer = generateBuffer(doc);
+    const buffer = generateBuffer(doc, "quotation");
 
     return {
       buffer,
@@ -2102,7 +2329,7 @@ export const generateContractRenewalDocx = async (renewal) => {
     // GENERATE BUFFER
     // ------------------------------------------------------
 
-    const buffer = generateBuffer(doc);
+    const buffer = generateBuffer(doc, "contract-renewal");
 
     return {
       buffer,
@@ -2300,6 +2527,8 @@ export const generateOneTimeJobDocx = async (service) => {
 
       amount: formatAmount(service.amount),
 
+      paymentBasis: formatPaymentBasisLabel(service.paymentBasis, ""),
+
       // 1st Service Column
       serviceDate1,
       serviceTime1,
@@ -2356,7 +2585,7 @@ export const generateOneTimeJobDocx = async (service) => {
 
     const doc = loadDocxTemplate(template.filePath);
     doc.render(data);
-    const buffer = generateBuffer(doc);
+    const buffer = generateBuffer(doc, "one-time-job");
 
     return {
       buffer,

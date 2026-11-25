@@ -8,12 +8,14 @@ import {
   calculateServiceDates,
   formatDateForInput,
   isMultiDateFrequency,
+  normalizeFrequency,
 } from "../utils/serviceDateCalculator";
 import { useBodyScrollLock } from "../utils/useBodyScrollLock";
 import { toast } from "../utils/toast";
 import { getErrorMessage } from "../utils/errorHandler";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
 import { FaPlus, FaTrash, FaEdit, FaCheck } from "react-icons/fa";
+import { PAYMENT_BASIS_OPTIONS } from "../utils/paymentBasis";
 
 function EditServiceModal({ service, onClose }) {
   const dispatch = useDispatch();
@@ -173,11 +175,11 @@ function EditServiceModal({ service, onClose }) {
     jobNo: service?.jobNo || service?.jobNumber || "",
     serviceName: service?.serviceName || "",
     desc: service?.desc || "",
-    frequency: service?.frequency || "",
+    frequency: normalizeFrequency(service?.frequency) || "",
     serviceDate: formatDateForInput(service?.serviceDate),
-    nextServiceDate: formatDateForInput(service?.nextServiceDate),
     upcomingServiceDates: initialUpcoming(),
     amount: service?.amount || "",
+    paymentBasis: service?.paymentBasis || "",
     totalAmount: initialTotal,
     paidAmount: initialPaid,
     balanceAmount: initialBalance,
@@ -255,11 +257,10 @@ function EditServiceModal({ service, onClose }) {
 
     if (name === "serviceDate" || name === "frequency") {
       if (updated.serviceDate && updated.frequency) {
-        const { nextServiceDate, upcomingServiceDates } = calculateServiceDates(
+        const { upcomingServiceDates } = calculateServiceDates(
           updated.serviceDate,
           updated.frequency
         );
-        updated.nextServiceDate = formatDateForInput(nextServiceDate);
         updated.upcomingServiceDates = upcomingServiceDates;
       }
     }
@@ -863,7 +864,9 @@ function EditServiceModal({ service, onClose }) {
                 <option value="monthly">Monthly</option>
                 <option value="Fourth nightly">Fourth nightly</option>
                 <option value="Quarterly">Quarterly</option>
+                <option value="Half-Yearly">Half-Yearly</option>
                 <option value="Yearly 3 services">Yearly 3 services</option>
+                <option value="Yearly">Yearly</option>
               </select>
             </div>
 
@@ -884,7 +887,7 @@ function EditServiceModal({ service, onClose }) {
             )}
 
             <div className="grid md:grid-cols-2 gap-4">
-              <div>
+              <div className={isOneTime ? "" : "md:col-span-2"}>
                 <label className="block mb-1 text-sm font-medium text-gray-700">
                   Service Date
                 </label>
@@ -898,7 +901,7 @@ function EditServiceModal({ service, onClose }) {
                 />
               </div>
 
-              {isOneTime ? (
+              {isOneTime && (
                 <div>
                   <label className="block mb-1 text-sm font-medium text-gray-700">
                     Service Time
@@ -912,20 +915,29 @@ function EditServiceModal({ service, onClose }) {
                     className="w-full border rounded-xl p-3"
                   />
                 </div>
-              ) : (
-                <div>
-                  <label className="block mb-1 text-sm font-medium text-gray-700">
-                    Next Service Date
-                  </label>
-                  <input
-                    type="date"
-                    name="nextServiceDate"
-                    value={formData.nextServiceDate}
-                    onChange={handleChange}
-                    className="w-full border rounded-xl p-3"
-                  />
-                </div>
               )}
+
+              {!isOneTime &&
+                isMultiDateFrequency(formData.frequency) &&
+                formData.upcomingServiceDates?.length > 0 && (
+                  <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <p className="text-xs font-semibold text-slate-600 mb-2 uppercase tracking-wide">
+                      Calculated Upcoming Service Dates (
+                      {formData.upcomingServiceDates.length}) — Service 1 (Initial):{" "}
+                      {formatDate(formData.serviceDate)}
+                    </p>
+                    <div className="flex flex-wrap gap-2 max-h-28 overflow-y-auto">
+                      {formData.upcomingServiceDates.map((d, i) => (
+                        <span
+                          key={i}
+                          className="bg-white border border-slate-300 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-700 shadow-xs"
+                        >
+                          Service {i + 2}: {formatDate(d)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
             </div>
 
             {/* One Time Job Specific Details */}
@@ -1052,21 +1064,61 @@ function EditServiceModal({ service, onClose }) {
                     </div>
                   </div>
                 </div>
+
+                <div>
+                  <label className="block mb-1 text-xs font-semibold text-slate-600">
+                    Payment Basis
+                  </label>
+                  <select
+                    name="paymentBasis"
+                    value={formData.paymentBasis}
+                    onChange={handleChange}
+                    className="w-full border rounded-xl p-2.5 bg-white text-sm"
+                  >
+                    <option value="">Not Specified</option>
+                    {PAYMENT_BASIS_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             ) : (
-              <div>
-                <label className="block mb-1 text-sm font-medium text-gray-700">
-                  Amount
-                </label>
-                <input
-                  type="number"
-                  name="amount"
-                  value={formData.amount}
-                  onChange={handleChange}
-                  placeholder="Amount"
-                  className="w-full border rounded-xl p-3"
-                  required
-                />
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-gray-700">
+                    Amount
+                  </label>
+                  <input
+                    type="number"
+                    name="amount"
+                    value={formData.amount}
+                    onChange={handleChange}
+                    placeholder="Amount"
+                    className="w-full border rounded-xl p-3"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-gray-700">
+                    Payment Basis
+                  </label>
+                  <select
+                    name="paymentBasis"
+                    value={formData.paymentBasis}
+                    onChange={handleChange}
+                    className="w-full border rounded-xl p-3 bg-white"
+                  >
+                    <option value="">Not Specified</option>
+                    {PAYMENT_BASIS_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
 

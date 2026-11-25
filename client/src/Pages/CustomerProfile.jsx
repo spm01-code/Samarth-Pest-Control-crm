@@ -32,6 +32,7 @@ import usePermission from "../hooks/usePermission";
 import TooltipCell from "../Components/TooltipCell";
 import DataTable from "../Components/DataTable";
 import { formatDateOnly as formatDate } from "../utils/dateUtils";
+import { formatPaymentBasis } from "../utils/paymentBasis";
 
 function CustomerProfile() {
   const { id } = useParams();
@@ -432,7 +433,13 @@ function CustomerProfile() {
                           </p>
                         ) : (
                           <p className="text-gray-500">
-                            Next Service: {formatDate(service.nextServiceDate)}
+                            Next Service:{" "}
+                            {formatDate(
+                              service.serviceDate && service.frequency
+                                ? calculateServiceDates(service.serviceDate, service.frequency).nextServiceDate
+                                : service.nextServiceDate,
+                              "No Upcoming Service"
+                            )}
                           </p>
                         )}
                         <p className="text-gray-500">
@@ -442,6 +449,9 @@ function CustomerProfile() {
 
                       <div className="text-right">
                         <p className="font-semibold">Rs. {service.amount}</p>
+                        <p className="text-xs text-slate-500">
+                          {formatPaymentBasis(service.paymentBasis)}
+                        </p>
                         <p className="capitalize text-sm text-gray-500">
                           {service.status}
                         </p>
