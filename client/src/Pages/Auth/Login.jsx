@@ -35,7 +35,7 @@ function Login() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 flex items-center justify-center px-4 py-8 overflow-hidden">
+    <div className="relative min-h-screen w-full bg-slate-950 flex items-center justify-center px-4 py-8 overflow-x-hidden">
       {/* CSS Animation Keyframes */}
       <style>{`
         @keyframes blob1 {

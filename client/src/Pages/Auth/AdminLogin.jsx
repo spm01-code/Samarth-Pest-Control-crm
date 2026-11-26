@@ -47,7 +47,7 @@ function AdminLogin() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 flex items-center justify-center px-4 py-8 overflow-hidden">
+    <div className="relative min-h-screen w-full bg-slate-950 flex items-center justify-center px-4 py-8 overflow-x-hidden">
       {/* Floating Shield Blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute top-[10%] left-[20%] w-[380px] h-[380px] rounded-full bg-red-600/10 blur-[90px]"></div>
